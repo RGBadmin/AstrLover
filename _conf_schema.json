@@ -1,0 +1,161 @@
+{
+  "wiring": {
+    "type": "object",
+    "description": "接线配置（必填项在此）",
+    "items": {
+      "main_platform_id": {
+        "type": "string",
+        "description": "主 bot 的平台实例 ID",
+        "hint": "AstrBot 消息平台配置里你为主 bot 填写的 id 字段",
+        "default": ""
+      },
+      "god_platform_id": {
+        "type": "string",
+        "description": "上帝 bot 的平台实例 ID（留空禁用上帝控制台）",
+        "default": ""
+      },
+      "owner_id": {
+        "type": "string",
+        "description": "主人的 Telegram 数字 user id",
+        "hint": "可向 @userinfobot 发消息获取；她只对这个 id 是恋人，上帝 bot 只认这个 id",
+        "obvious_hint": true,
+        "default": ""
+      },
+      "channel_id": {
+        "type": "string",
+        "description": "她的频道 chat id（@用户名 或 -100 开头数字，留空禁用频道动态）",
+        "default": ""
+      },
+      "discussion_group_id": {
+        "type": "string",
+        "description": "频道关联讨论组的 chat id（用于评论区互动，留空禁用）",
+        "default": ""
+      },
+      "timezone": {
+        "type": "string",
+        "description": "她所在时区",
+        "default": "Asia/Shanghai"
+      }
+    }
+  },
+  "models": {
+    "type": "object",
+    "description": "模型分工（成本意识：对话用强模型，决策用轻模型）",
+    "items": {
+      "chat_provider_id": {
+        "type": "string",
+        "description": "主对话模型 Provider ID（留空 = 使用当前会话默认模型）",
+        "default": ""
+      },
+      "light_provider_id": {
+        "type": "string",
+        "description": "轻量决策模型 Provider ID（心跳决策/意图解析等高频低难度调用；留空 = 同主对话模型）",
+        "default": ""
+      },
+      "vlm_provider_id": {
+        "type": "string",
+        "description": "视觉解析模型 Provider ID（图库打标；留空 = 用主对话模型读图）",
+        "default": ""
+      },
+      "embedding_provider_id": {
+        "type": "string",
+        "description": "Embedding Provider ID（记忆召回与图库语义检索必需）",
+        "obvious_hint": true,
+        "default": ""
+      },
+      "tts_provider_id": {
+        "type": "string",
+        "description": "TTS Provider ID（留空禁用语音发送）",
+        "_special": "select_provider_tts",
+        "default": ""
+      },
+      "stt_provider_id": {
+        "type": "string",
+        "description": "STT Provider ID（留空则不能听懂语音条）",
+        "default": ""
+      }
+    }
+  },
+  "imagegen": {
+    "type": "object",
+    "description": "生图后端（可多个并存，按优先级降级）",
+    "items": {
+      "backend_order": {
+        "type": "list",
+        "description": "启用的后端及优先顺序：nanobanana / comfyui / novelai",
+        "default": ["nanobanana", "comfyui", "novelai"]
+      },
+      "nanobanana": {
+        "type": "object",
+        "description": "NanoBanana（Gemini 系生图，支持参考图保持人物一致性）",
+        "items": {
+          "api_key": { "type": "string", "description": "API Key", "default": "" },
+          "base_url": {
+            "type": "string",
+            "description": "API 地址（官方或兼容中转）",
+            "default": "https://generativelanguage.googleapis.com"
+          },
+          "model": {
+            "type": "string",
+            "description": "模型名",
+            "default": "gemini-2.5-flash-image"
+          }
+        }
+      },
+      "comfyui": {
+        "type": "object",
+        "description": "云 ComfyUI（workflow API 模板方式，可内嵌 LoRA/IPAdapter 保一致性）",
+        "items": {
+          "base_url": { "type": "string", "description": "ComfyUI 服务地址", "default": "" },
+          "api_key": { "type": "string", "description": "鉴权 Key（无则留空）", "default": "" },
+          "workflow_file": {
+            "type": "string",
+            "description": "workflow API JSON 文件路径（数据目录相对路径），其中正/负提示词节点用 {POSITIVE} / {NEGATIVE} 占位",
+            "default": "comfyui_workflow.json"
+          }
+        }
+      },
+      "novelai": {
+        "type": "object",
+        "description": "NovelAI",
+        "items": {
+          "api_key": { "type": "string", "description": "API Key", "default": "" },
+          "model": { "type": "string", "description": "模型名", "default": "nai-diffusion-4-5-full" }
+        }
+      }
+    }
+  },
+  "proactive": {
+    "type": "object",
+    "description": "主动消息防打扰（仅有的三个行为参数，其余表现一律由人格档案决定）",
+    "items": {
+      "min_gap_minutes": {
+        "type": "int",
+        "description": "最小触发间隔：你最后一条消息后至少隔多少分钟她才会主动来找你",
+        "default": 45
+      },
+      "max_silence_hours": {
+        "type": "int",
+        "description": "最大沉默时限：最长多少小时没聊天，她应当来找你了",
+        "default": 30
+      },
+      "max_unanswered": {
+        "type": "int",
+        "description": "连续几条主动消息未回她就先停下，等你回来",
+        "default": 3
+      }
+    }
+  },
+  "system": {
+    "type": "object",
+    "description": "系统",
+    "items": {
+      "heartbeat_minutes": {
+        "type": "int",
+        "description": "心跳间隔（分钟），生命活动的推进频率，纯代码不耗 token",
+        "default": 5
+      },
+      "debug": { "type": "bool", "description": "调试日志", "default": false }
+    }
+  }
+}

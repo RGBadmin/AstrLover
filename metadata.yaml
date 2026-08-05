@@ -1,0 +1,12 @@
+name: astrlover
+display_name: AstrLover
+desc: 拟真 AI 恋人——有人格、有记忆、有作息、过着自己生活的数字恋人（Telegram）
+help: |
+  详见 README。需要配置：主 bot 平台实例 id、主人 user id；
+  可选：上帝 bot 实例、频道、讨论组、生图后端、TTS/STT。
+version: v0.1.0
+author: RGBadmin
+repo: https://github.com/RGBadmin/AstrLover
+support_platforms:
+  - telegram
+astrbot_version: ">=4.16,<5"
