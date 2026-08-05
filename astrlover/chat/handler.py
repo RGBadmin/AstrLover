@@ -31,10 +31,10 @@ class ChatPipeline:
     # ------------------------------------------------------------------
     # 入口
     # ------------------------------------------------------------------
-    async def on_owner_message(self, event: AstrMessageEvent):
+    async def on_partner_message(self, event: AstrMessageEvent):
+        """绑定对话（导演 bot /link 指定）里的消息：她全权处理。"""
         app = self.app
         app.llm.owner_umo = event.unified_msg_origin
-        await app.dao.kv_set("owner_umo", event.unified_msg_origin)
         await app.dao.kv_set("last_user_ts", int(time.time()))
         await app.dao.kv_set("proactive_unanswered", 0)
 
@@ -149,7 +149,7 @@ class ChatPipeline:
         if event is not None:
             await event.send(chain)
             return
-        umo = await self.app.dao.kv_get("owner_umo")
+        umo = await self.app.linked_umo()
         if umo:
             await self.app.context.send_message(umo, chain)
 

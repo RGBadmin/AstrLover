@@ -1,7 +1,7 @@
 """App：AstrLover 的装配中心与共享门面。
 
 main.py 只认识 App；子系统之间经 App 互相取用。
-后续里程碑落地的服务（生活引擎/心跳/图库/语音/上帝台/频道）在此逐个接入。
+后续里程碑落地的服务（生活引擎/心跳/图库/语音/导演台/频道）在此逐个接入。
 """
 
 import shutil
@@ -18,8 +18,8 @@ except ImportError:
 from .actions import ActionExecutor
 from .chat.handler import ChatPipeline
 from .config import Cfg
+from .director.bot import DirectorBot
 from .gallery.service import Gallery
-from .god.handler import GodConsole
 from .imagegen.base import ImageGen
 from .heart.desire import Desire
 from .heart.impulses import Impulses
@@ -92,11 +92,10 @@ class App:
         self.impulses: Impulses | None = None
         self.channel_hub = _Silent()
 
-        # 后续里程碑接管的服务
-        self.voice = None            # M6
-        self.gallery = None          # M5
-        self.imagegen = None         # M5
-        self.god = _Silent()         # M7
+        self.voice = None
+        self.gallery = None
+        self.imagegen = None
+        self.director: DirectorBot | None = None
 
         self._caps: set[str] = set()
 
@@ -138,7 +137,7 @@ class App:
 
         self.vectors = Vectors(self.vec_dir, self.context, self.cfg.embedding_provider_id)
         self.llm = LLM(self.context, self.cfg)
-        umo = await self.dao.kv_get("owner_umo")
+        umo = await self.linked_umo()
         if umo:
             self.llm.owner_umo = umo
 
@@ -162,7 +161,9 @@ class App:
         await self.gallery.ingest.scan_dir()
 
         self.voice = VoiceService(self)
-        self.god = GodConsole(self)
+
+        self.director = DirectorBot(self)
+        await self.director.start()
 
         self.panel = PanelApi(self)
         self.panel.register()
@@ -174,6 +175,8 @@ class App:
 
     async def terminate(self):
         self.ready = False
+        if self.director:
+            await self.director.stop()
         if self.heart:
             await self.heart.stop()
         if self.vectors:
@@ -284,8 +287,23 @@ class App:
             return None
         return await self.gallery.provide(desc)
 
-    async def owner_umo(self) -> str | None:
-        return await self.dao.kv_get("owner_umo")
+    # ==================================================================
+    # 绑定对话（导演 bot /link 管理；她的一切收发都以此为家）
+    # ==================================================================
+    async def linked_umo(self) -> str:
+        umo = await self.dao.kv_get("linked_umo")
+        if not umo:
+            legacy = await self.dao.kv_get("owner_umo")  # 旧版数据迁移
+            if legacy:
+                await self.dao.kv_set("linked_umo", legacy)
+                return str(legacy)
+        return str(umo or "")
+
+    async def set_linked_umo(self, umo: str):
+        await self.dao.kv_set("linked_umo", umo)
+        if umo:
+            self.llm.owner_umo = umo
+        logger.info(f"[AstrLover] 绑定对话已切换为：{umo or '（无）'}")
 
     async def _seed_backstory(self):
         """身世条目一次性播种进事实层（R1：分条目存放，聊到才取用）。"""

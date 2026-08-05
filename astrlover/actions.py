@@ -1,7 +1,7 @@
-"""统一执行通道（D4/R7）：她的自主行为与上帝编排走同一批方法。
+"""统一执行通道（D4/R7）：她的自主行为与导演编排走同一批方法。
 
 pending_actions 表里的到期任务由心跳送到这里执行；
-上帝 bot 的"说/做"即时指令也直接调用这里。
+导演 bot 的"说/做"即时指令也直接调用这里。
 效果上，"她恰好做了你想让她做的事"，毫无违和。
 """
 
@@ -46,7 +46,7 @@ class ActionExecutor:
             logger.error(f"[AstrLover] 待办动作 {kind}#{row['id']} 异常：", exc_info=True)
 
     # ------------------------------------------------------------------
-    # 即时执行（上帝 bot 直接调用）
+    # 即时执行（导演 bot 直接调用）
     # ------------------------------------------------------------------
     async def run(self, kind: str, payload: dict) -> bool:
         app = self.app
@@ -71,7 +71,7 @@ class ActionExecutor:
         app = self.app
         if not instruction:
             return False
-        umo = await app.owner_umo()
+        umo = await app.linked_umo()
         if not umo:
             return False
         system_prompt = await app.build_master_prompt(
@@ -104,7 +104,7 @@ class ActionExecutor:
         app = self.app
         if not instruction:
             return False
-        umo = await app.owner_umo()
+        umo = await app.linked_umo()
         if not umo:
             return False
         system_prompt = await app.build_master_prompt(
@@ -127,9 +127,9 @@ class ActionExecutor:
         return True
 
     # ------------------------------------------------------------------
-    # 供上帝 bot 使用：定时排程
+    # 供导演 bot 使用：定时排程
     # ------------------------------------------------------------------
-    async def schedule(self, kind: str, payload: dict, due_ts: int, source: str = "god") -> int:
+    async def schedule(self, kind: str, payload: dict, due_ts: int, source: str = "director") -> int:
         return await self.app.dao.add_action(kind, payload, due_ts=due_ts, source=source)
 
     @staticmethod

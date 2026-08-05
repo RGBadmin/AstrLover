@@ -9,15 +9,10 @@
         "hint": "AstrBot 消息平台配置里你为主 bot 填写的 id 字段",
         "default": ""
       },
-      "god_platform_id": {
-        "type": "string",
-        "description": "上帝 bot 的平台实例 ID（留空禁用上帝控制台）",
-        "default": ""
-      },
       "owner_id": {
         "type": "string",
-        "description": "主人的 Telegram 数字 user id",
-        "hint": "可向 @userinfobot 发消息获取；她只对这个 id 是恋人，上帝 bot 只认这个 id",
+        "description": "管理员（主人）的 Telegram 数字 user id",
+        "hint": "可向 @userinfobot 发消息获取；导演 bot 只认这个 id",
         "obvious_hint": true,
         "default": ""
       },
@@ -35,6 +30,22 @@
         "type": "string",
         "description": "她所在时区",
         "default": "Asia/Shanghai"
+      }
+    }
+  },
+  "director": {
+    "type": "object",
+    "description": "导演 bot（由插件直接注册管理，不占用 AstrBot 平台实例）",
+    "items": {
+      "bot_token": {
+        "type": "string",
+        "description": "导演 bot 的 Telegram Bot Token（@BotFather 创建；留空禁用导演控制台）",
+        "default": ""
+      },
+      "proxy": {
+        "type": "string",
+        "description": "代理地址（如 http://127.0.0.1:7890，留空直连）",
+        "default": ""
       }
     }
   },

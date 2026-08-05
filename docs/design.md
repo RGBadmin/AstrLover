@@ -12,15 +12,15 @@ AstrLover 是**单个 AstrBot 插件**（仓库即插件目录，克隆到 `data
 ```
 ┌────────────────────────── AstrBot 主进程 ──────────────────────────┐
 │                                                                     │
-│  Telegram 主 bot 实例 ──┐                       ┌── Telegram 上帝 bot 实例
-│  (platform_id=A)        │                       │   (platform_id=B, 只认主人)
-│                         ▼                       ▼                   │
-│              ┌───────── main.py 事件路由(按 platform_id 分流) ─────┐ │
-│              │                                                     │ │
-│  ┌───────────┴──────────┐   ┌──────────────┐   ┌─────────────────┐│ │
-│  │ chat 对话管线         │   │ god 上帝控制台│   │ panel Web面板    ││ │
-│  │ (接管私聊,stop_event) │   │ (说/做/定时)  │   │ (Pages+web_api) ││ │
-│  └───────────┬──────────┘   └──────┬───────┘   └─────────────────┘│ │
+│  Telegram 主 bot 实例 ──┐              导演 bot（插件自持 PTB 轮询，│
+│  (platform_id=A)        │              不占平台实例，只认管理员）    │
+│                         ▼                       │                   │
+│              ┌── main.py 事件路由(绑定UMO优先，主bot全接管) ──────┐ │
+│              │                                  ▼                  │ │
+│  ┌───────────┴──────────┐   ┌───────────────────┐   ┌────────────┐│ │
+│  │ chat 对话管线         │   │ director 导演控制台│   │ panel 面板  ││ │
+│  │ (绑定对话,stop_event) │   │ (/umo /link 说做定时)│ │(Pages+api) ││ │
+│  └───────────┬──────────┘   └──────┬────────────┘   └────────────┘│ │
 │              │      共 用 执 行 通 道 (actions)                     │ │
 │  ┌───────────▼───────────────────────▼──────────────────────────┐ │ │
 │  │ heart 心跳引擎(纯代码tick) → desire 意愿 → planner 轻模型决策  │ │ │
@@ -72,7 +72,7 @@ AstrLover/
     ├── config.py            # 配置封装与校验
     ├── llm.py               # 模型路由：主模型/轻模型/VLM，统一入口与重试
     ├── security.py          # 外部输入包裹、防注入
-    ├── actions.py           # 统一执行通道：自主行为与上帝编排共用
+    ├── actions.py           # 统一执行通道：自主行为与导演编排共用
     ├── scheduler.py         # 延时/定时任务（自持久化，重启恢复）
     ├── store/
     │   ├── db.py            # aiosqlite 连接与迁移
@@ -120,8 +120,9 @@ AstrLover/
     │   ├── profile.py       # R2 换头像(set_my_profile_photo)/改签名
     │   ├── channel.py       # 频道发帖(单图/相册 send_media_group)/评论互动
     │   └── reactions.py     # 表情回应感知（尽力而为，见风险#3）
-    ├── god/
-    │   ├── handler.py       # R7 意图解析：说/做/定时/查状态/改配置/看日记
+    ├── director/
+    │   ├── bot.py           # R7 导演 bot：插件自持的独立 PTB bot（不经 AstrBot 平台）
+    │   ├── console.py       # 命令与意图解析：/umo /link/说/做/定时/查状态/改配置/看日记
     │   └── status.py
     └── panel/api.py         # register_web_api 各端点
 ```
@@ -129,9 +130,12 @@ AstrLover/
 ## 四、关键设计决策
 
 ### D1 对话完全接管（而非挂在默认管线上）
-主 bot 上来自主人的私聊消息由 `chat/handler.py` 全权处理并 `stop_event()`：
+她生活在**绑定对话**里（导演 bot `/umo` 列出全部对话、`/link <UMO>` 绑定与切换，可跨平台）；
+绑定对话的消息由 `chat/handler.py` 全权处理并 `stop_event()`：
 上下文组装（档案+时间+生活状态+情绪+小抄+召回记忆+未提及事件）→ 主模型 → 标记协议解析 → 多形态回复（分段文字/语音/图/表情包）→ 记忆沉淀。
-其他人发给主 bot 的私聊：礼貌拒绝（她是"专一的"）；上帝 bot 上非主人消息：静默忽略。
+未绑定时，管理员私聊主 bot 会自动绑定该对话。主 bot 平台实例被完全接管：
+其他人发来的私聊礼貌拒绝（她是"专一的"），无关群消息忽略。
+导演 bot 是插件自持的独立 PTB bot（不占用 AstrBot 平台实例），只认管理员，其他人静默无视。
 
 ### D2 回复标记协议（provider 无关，不依赖 function calling）
 主模型在 system prompt 约定下输出带轻量标记的回复，composer 解析执行：
@@ -147,7 +151,7 @@ AstrLover/
 **只有**意愿分过阈值且防打扰三参数放行时，才调轻模型做一次"要不要/说什么/什么形式"的决策生成。日记每天 1 次、周记每周 1 次。挂机一天的模型调用可数得过来。
 
 ### D4 事件流是拟真三支柱的枢纽（A2）
-一切自主行为（换头像/改签名/发动态/主动消息/剪头发…）统一经 `actions.py` 执行，执行成功即写入事件流（内容描述+真实动机+提及状态），并成为：日记素材、聊天可提及话题、"被我发现"的应答依据。上帝编排走同一通道，故"她恰好做了我想让她做的事"。
+一切自主行为（换头像/改签名/发动态/主动消息/剪头发…）统一经 `actions.py` 执行，执行成功即写入事件流（内容描述+真实动机+提及状态），并成为：日记素材、聊天可提及话题、"被我发现"的应答依据。导演编排走同一通道，故"她恰好做了我想让她做的事"。
 
 ### D5 图库与生图共用"情境需求描述"这一中间语言（R5）
 选图不检索字面，而是先由主模型产出下一幕的情境需求描述（场景/人物状态/情绪/构图/类别），
@@ -160,11 +164,11 @@ AstrLover/
 复用 AstrBot 自带 faiss 依赖与 Embedding Provider，不引入新向量服务。
 
 ### D7 定时任务自持久化
-上帝编排的"定时"与她自己的"打算"（如"晚上发动态"）写入 `pending_actions` 表（due_at+payload），由心跳扫描执行；不依赖 cron_manager 的内存 handler（重启即失效的问题），重启后天然恢复。
+导演编排的"定时"与她自己的"打算"（如"晚上发动态"）写入 `pending_actions` 表（due_at+payload），由心跳扫描执行；不依赖 cron_manager 的内存 handler（重启即失效的问题），重启后天然恢复。
 
 ### D8 安全边界
 - 频道评论/讨论组等外部文本一律经 `security.wrap_external()` 包裹为"她读到的内容"，附防注入护栏说明，绝不进入 system prompt 层；
-- 上帝 bot 与面板等同上帝权限：上帝 bot 仅认 `owner_id`，面板在 AstrBot Dashboard JWT 鉴权之后；
+- 导演 bot 与面板等同导演权限：导演 bot 仅认 `owner_id`（其他人静默无视），面板在 AstrBot Dashboard JWT 鉴权之后；
 - 仓库/代码零密钥，一切凭据在 AstrBot 配置或插件配置中。
 
 ## 五、数据模型（SQLite）
@@ -180,14 +184,15 @@ AstrLover/
 | cheatsheet | 核心小抄（版本化） | version, content, updated_at, reason |
 | relationship | 关系状态与里程碑（A12） | stage, anniversary dates, milestones(json) |
 | gallery | 图库（R4） | file, category(自拍/生活照/场景图/表情包), tags(json), desc, appearance(json), source(user/gen), vec_id, last_used |
-| pending_actions | 待执行动作（D7） | due_at, kind, payload(json), status, source(self/god) |
+| pending_actions | 待执行动作（D7） | due_at, kind, payload(json), status, source(self/director) |
 | kv 杂项 | 计数器/游标类 | 经 Star KV API |
 
 文件区：`persona/profile.yaml`（静态基线）、`persona/dynamic.yaml`（动态层）、`gallery/files/`、`voice/cache/`、`vec/`（FAISS 两库）、`exports/`。
 
 ## 六、配置（_conf_schema.json 最小集合）
 
-接线：主/上帝 bot 平台实例 id、主人 user id、频道 id、讨论组 id、时区；
+接线：主 bot 平台实例 id、管理员 user id、频道 id、讨论组 id、时区；
+导演：导演 bot token（插件自持轮询）与可选代理；绑定对话（linked UMO）为运行期状态，经导演 bot /link 管理，不入配置；
 模型：主对话 provider id（空=会话当前）、轻量决策 provider id、VLM provider id（空=主模型）、Embedding provider id、TTS/STT provider id；
 生图：后端优先级列表 + nanobanana{key,base_url,model} + comfyui{base_url,workflow} + novelai{key,model}；
 防打扰（A3 仅此三个行为参数）：最小触发间隔、最大沉默时限、未回停发条数；
@@ -196,7 +201,7 @@ AstrLover/
 
 ## 七、里程碑
 
-M0 骨架与本文档 → M1 存储+档案+对话管线 → M2 四层记忆 → M3 虚拟生活+心跳+主动 → M4 事件流+头像签名+频道 → M5 图库+生图 → M6 语音 → M7 上帝 bot → M8 面板 → M9 安全/导出/文档/推送 GitHub(AstrLover)。
+M0 骨架与本文档 → M1 存储+档案+对话管线 → M2 四层记忆 → M3 虚拟生活+心跳+主动 → M4 事件流+头像签名+频道 → M5 图库+生图 → M6 语音 → M7 导演 bot → M8 面板 → M9 安全/导出/文档/推送 GitHub(AstrLover)。
 
 每个里程碑：模块代码 + 纯逻辑单元测试（不依赖 AstrBot 运行时的部分）；集成联调在 Debian 服务器实例上按 README 步骤进行。
 

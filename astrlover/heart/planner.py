@@ -29,7 +29,7 @@ class Planner:
 
     async def proactive_message(self, reasons: list[str]) -> bool:
         app = self.app
-        umo = await app.owner_umo()
+        umo = await app.linked_umo()
         if not umo:
             return False
 

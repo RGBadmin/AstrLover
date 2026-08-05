@@ -60,7 +60,7 @@ async function renderOverview() {
       el("div", { class: "card" }, [
         el("h3", {}, "互动"),
         el("div", { class: "big" },
-          `距他上次说话：${d.last_user_minutes == null ? "—" : d.last_user_minutes + " 分钟"}\n主动未回：${d.unanswered}`),
+          `绑定对话：${d.linked_umo || "未绑定（导演 bot /link）"}\n距他上次说话：${d.last_user_minutes == null ? "—" : d.last_user_minutes + " 分钟"}\n主动未回：${d.unanswered}`),
       ]),
       el("div", { class: "card wide" }, [
         el("h3", {}, "模块健康"),

@@ -1,7 +1,7 @@
 """Web 管理面板后端（系统性需求·双控制台）。
 
 经 AstrBot Plugin Pages 机制暴露：所有请求都在 Dashboard JWT 鉴权之后
-（面板等同上帝权限，绝不公开暴露）。路由前缀 = 插件名 astrlover。
+（面板等同导演权限，绝不公开暴露）。路由前缀 = 插件名 astrlover。
 """
 
 import asyncio
@@ -58,6 +58,7 @@ class PanelApi:
         last_user = await app.dao.kv_get("last_user_ts", 0) or 0
         return json_response({
             "ready": app.ready,
+            "linked_umo": await app.linked_umo(),
             "name": app.profile.name if app.profile else "",
             "now": app.clock.describe_now(app.profile.met_on, app.profile.anniversary),
             "activity": await app.life.current_activity() if app.life else "",
@@ -145,7 +146,7 @@ class PanelApi:
         body = payload.get("payload") or {}
         due_ts = payload.get("due_ts")
         if isinstance(due_ts, (int, float)) and due_ts > time.time():
-            aid = await self.app.actions.schedule(kind, body, int(due_ts), source="god")
+            aid = await self.app.actions.schedule(kind, body, int(due_ts), source="director")
             return json_response({"scheduled": aid})
         ok = await self.app.actions.run(kind, body)
         return json_response({"ok": ok})

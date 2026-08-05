@@ -1,4 +1,4 @@
-"""上帝视角状态报告（R7 配置台之"查看她的运行状态"）。纯代码，零 token。"""
+"""导演视角状态报告（R7 之"查看她的运行状态"）。纯代码，零 token。"""
 
 import time
 from datetime import datetime
@@ -6,6 +6,10 @@ from datetime import datetime
 
 async def build_status(app) -> str:
     lines = ["📋 AstrLover 运行状态", ""]
+
+    # 绑定的对话
+    linked = await app.linked_umo()
+    lines.append(f"🔗 绑定对话：{linked or '（未绑定——用 /umo 查看、/link 绑定）'}")
 
     # 她的此刻
     lines.append(f"🕒 {app.clock.describe_now(app.profile.met_on, app.profile.anniversary)}")

@@ -33,12 +33,17 @@ class Cfg:
         return str(self._g("wiring", "main_platform_id")).strip()
 
     @property
-    def god_platform_id(self) -> str:
-        return str(self._g("wiring", "god_platform_id")).strip()
-
-    @property
     def owner_id(self) -> str:
         return str(self._g("wiring", "owner_id")).strip()
+
+    # ---- 导演 bot（插件自持，不经过 AstrBot 平台管理）----
+    @property
+    def director_token(self) -> str:
+        return str(self._g("director", "bot_token")).strip()
+
+    @property
+    def director_proxy(self) -> str:
+        return str(self._g("director", "proxy")).strip()
 
     @property
     def channel_id(self) -> str:

@@ -42,7 +42,7 @@ class Desire:
         cfg = app.cfg
         now = time.time()
 
-        if not await app.dao.kv_get("owner_umo"):
+        if not await app.linked_umo():
             return None  # 还从没聊过，无处可发
 
         # --- 硬门槛 ---

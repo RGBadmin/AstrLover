@@ -50,7 +50,7 @@ class Heartbeat:
         await app.life.ensure_today_plan()
         await app.life.advance()
 
-        # 2. 到期的待办动作（上帝编排/她自己的打算，D7）
+        # 2. 到期的待办动作（导演编排/她自己的打算，D7）
         if app.actions:
             for row in await app.dao.due_actions():
                 await app.actions.execute(row)

@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS facts (
     content    TEXT NOT NULL,            -- 原子事实
     category   TEXT NOT NULL DEFAULT '',
     status     TEXT NOT NULL DEFAULT 'active',  -- active / expired
-    source     TEXT NOT NULL DEFAULT '',        -- chat/init/god/improvise
+    source     TEXT NOT NULL DEFAULT '',        -- chat/init/director/improvise
     created_ts INTEGER NOT NULL,
     updated_ts INTEGER NOT NULL,
     vec_id     TEXT NOT NULL DEFAULT ''
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS pending_actions (
     kind       TEXT NOT NULL,             -- say/post/avatar/voice/proactive/...
     payload    TEXT NOT NULL DEFAULT '{}',
     status     TEXT NOT NULL DEFAULT 'pending', -- pending/done/failed/cancelled
-    source     TEXT NOT NULL DEFAULT 'self',    -- self/god
+    source     TEXT NOT NULL DEFAULT 'self',    -- self/director
     created_ts INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pending_due ON pending_actions (status, due_ts);
