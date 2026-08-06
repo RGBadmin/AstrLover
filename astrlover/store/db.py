@@ -8,7 +8,7 @@ from pathlib import Path
 
 import aiosqlite
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -126,6 +126,36 @@ CREATE TABLE IF NOT EXISTS pending_actions (
     created_ts INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pending_due ON pending_actions (status, due_ts);
+
+-- 相册（她的照片库：视觉解析产出的描述+分级+季节，向量在 FAISS）
+CREATE TABLE IF NOT EXISTS album_images (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    path         TEXT NOT NULL UNIQUE,        -- 相册目录内相对路径
+    folder       TEXT NOT NULL DEFAULT '',    -- .archive 标记的分类名
+    shot_ts      INTEGER NOT NULL DEFAULT 0,  -- snowflake 还原或 mtime
+    desc         TEXT NOT NULL DEFAULT '',
+    rating       TEXT NOT NULL DEFAULT '',    -- 六档/相邻双档
+    season       TEXT NOT NULL DEFAULT '',    -- 春夏秋冬组合或 四季
+    status       TEXT NOT NULL DEFAULT 'pending', -- pending/ok/failed
+    fails        INTEGER NOT NULL DEFAULT 0,  -- 只累计图片自身问题
+    embedded     INTEGER NOT NULL DEFAULT 0,  -- 四段向量已建
+    sent_count   INTEGER NOT NULL DEFAULT 0,
+    last_sent_ts INTEGER NOT NULL DEFAULT 0,
+    created_ts   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_album_status ON album_images (status, embedded);
+CREATE INDEX IF NOT EXISTS idx_album_folder ON album_images (folder);
+
+-- 聊天图片存档（图片记忆：两层描述，原图落盘 context_photos/）
+CREATE TABLE IF NOT EXISTS photo_archive (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,  -- 即 [图片 #N] 的编号
+    sha         TEXT NOT NULL UNIQUE,               -- 内容哈希去重
+    file        TEXT NOT NULL,                      -- 数据目录相对路径
+    seen_ts     INTEGER NOT NULL,                   -- 首次进入上下文
+    catalog     TEXT NOT NULL DEFAULT '',           -- 目录层：她自己写的那句
+    detail      TEXT NOT NULL DEFAULT '',           -- 细节层：视觉模型的画面记录
+    detail_fail INTEGER NOT NULL DEFAULT 0
+);
 
 -- 杂项键值（游标、计数器）
 CREATE TABLE IF NOT EXISTS kvmisc (
