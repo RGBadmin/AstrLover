@@ -1,6 +1,6 @@
 # AstrBot 主程序已提供：python-telegram-bot、faiss、aiosqlite、apscheduler、pyyaml、pillow、aiohttp
-# 此处仅列出插件额外依赖（当前无强制额外依赖，占位保留）
 aiohttp
+numpy
 pyyaml
 pillow
 zhdate

@@ -1,12 +1,12 @@
 name: astrlover
 display_name: AstrLover
-desc: 拟真 AI 恋人——有人格、有记忆、有作息、过着自己生活的数字恋人（Telegram）
+desc: 拟真 AI 恋人——骑在 AstrBot 对话管线上的生命模拟层（人格/记忆/作息/心跳）+ Telegram 存在感（相册/发照片/动态/头像签名/表情回应/图片记忆/控制台）。
 help: |
-  详见 README。需要配置：主 bot 平台实例 id、管理员 user id；
-  可选：导演 bot token、频道、讨论组、生图后端、TTS/STT。
-version: v0.2.0
+  详见 README。presence 能力源自 astrbot_plugin_tg_presence（同作者并入）。
+  与 astrbot_plugin_tg_presence 不可同时启用（工具与控制台会重复注册）。
+version: v0.3.0
 author: RGBadmin
 repo: https://github.com/RGBadmin/AstrLover
 support_platforms:
   - telegram
-astrbot_version: ">=4.16,<5"
+astrbot_version: ">=4.26,<5"
