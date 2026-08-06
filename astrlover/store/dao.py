@@ -187,62 +187,6 @@ class Dao:
         )
         return version
 
-    # ================= gallery =================
-    async def add_image(self, file: str, category: str = "life", source: str = "user", status: str = "pending") -> int:
-        return await self.db.execute(
-            "INSERT INTO gallery(file, category, source, status, created_ts) VALUES (?,?,?,?,?)",
-            (file, category, source, status, now_ts()),
-        )
-
-    async def tag_image(self, image_id: int, category: str, desc: str, tags: dict, appearance: dict, vec_id: str):
-        await self.db.execute(
-            "UPDATE gallery SET category=?, desc=?, tags=?, appearance=?, vec_id=?, status='ok' WHERE id=?",
-            (category, desc, _j(tags), _j(appearance), vec_id, image_id),
-        )
-
-    async def set_image_status(self, image_id: int, status: str):
-        await self.db.execute("UPDATE gallery SET status=? WHERE id=?", (status, image_id))
-
-    async def get_image(self, image_id: int) -> dict | None:
-        row = await self.db.fetchone("SELECT * FROM gallery WHERE id=?", (image_id,))
-        return _load_meta(row, "tags", "appearance") if row else None
-
-    async def list_images(self, category: str | None = None, status: str | None = None, limit: int = 100, offset: int = 0) -> list[dict]:
-        conds, params = [], []
-        if category:
-            conds.append("category=?")
-            params.append(category)
-        if status:
-            conds.append("status=?")
-            params.append(status)
-        where = ("WHERE " + " AND ".join(conds)) if conds else ""
-        rows = await self.db.fetchall(
-            f"SELECT * FROM gallery {where} ORDER BY id DESC LIMIT ? OFFSET ?",
-            (*params, limit, offset),
-        )
-        return [_load_meta(r, "tags", "appearance") for r in rows]
-
-    async def anchors(self) -> list[dict]:
-        rows = await self.db.fetchall("SELECT * FROM gallery WHERE is_anchor=1 AND status='ok'")
-        return [_load_meta(r, "tags", "appearance") for r in rows]
-
-    async def set_anchor(self, image_id: int, is_anchor: bool):
-        await self.db.execute("UPDATE gallery SET is_anchor=? WHERE id=?", (1 if is_anchor else 0, image_id))
-
-    async def mark_image_used(self, image_id: int):
-        await self.db.execute(
-            "UPDATE gallery SET last_used_ts=?, used_count=used_count+1 WHERE id=?",
-            (now_ts(), image_id),
-        )
-
-    async def delete_image(self, image_id: int):
-        await self.db.execute("DELETE FROM gallery WHERE id=?", (image_id,))
-
-    async def gallery_stats(self) -> dict:
-        rows = await self.db.fetchall(
-            "SELECT category, status, COUNT(*) AS n FROM gallery GROUP BY category, status"
-        )
-        return {f"{r['category']}/{r['status']}": r["n"] for r in rows}
 
     # ================= pending_actions =================
     async def add_action(self, kind: str, payload: dict, due_ts: int | None = None, source: str = "self") -> int:

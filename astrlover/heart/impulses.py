@@ -1,13 +1,11 @@
-"""生活冲动（R2/A2）：发动态、换头像、改签名——情境性触发，不是定时任务。
+"""生活冲动：发动态、换头像、改签名——情境性触发，不是定时任务。
 
-触发是纯代码的低成本掷签（冷却 + 清醒时段 + 特别日子加成）；
-执行走 presence 控制台同一条通道（run_console_line）：
-  /moment（留空=她自己想发什么）、/avatar（随机挑）、/signature（她自己想）。
-落地后记入生活事件流（A2 三要素），成为她的认知与可炫耀的话题。
+纯代码掷签（冷却 + 清醒时段 + 特别日子加成），内容由她自己想
+（走导演桥生成，与控制台留空时同一条路）。落地后进入生活事件流，
+成为她的认知与可炫耀的话题。
 """
 
 import random
-import time
 
 from astrbot.api import logger
 
@@ -18,44 +16,53 @@ class Impulses:
 
     async def maybe_fire(self):
         app = self.app
-        star = app.star
         if app.life and app.life.sleeping_now():
             return
-        if not (star.state.get("director_target") or "").strip():
-            return  # 没绑定角色会话，借不到她的身份
-        now = time.time()
+        if not app.state_target:
+            return  # 没绑定会话，借不到她的身份
         special = bool(
             app.clock.festivals_on(app.clock.today())
             or app.clock.upcoming_specials(app.dynamic.milestones, app.profile.birthday, 0)
         )
+        client = app.bridge.platform_client(app.state_target)
 
-        # 频道动态：期望约 1 条/天；特别日子加成
-        if str(star.conf.get("channel_id") or "").strip():
-            last_post = await app.dao.kv_get("last_post_ts", 0) or 0
-            if now - last_post > 16 * 3600 and random.random() < (0.010 + (0.03 if special else 0.0)):
-                await self._fire("moment", "/moment", "post", "发了条动态")
+        # 频道动态：期望约 1 条/天；特别日子加成。冷却与每日上限由 limits 兜底
+        if app.moments.channel() and random.random() < (0.010 + (0.03 if special else 0.0)):
+            await self._post(client)
 
-        # 头像：天级低频，冷却 3 天
-        last_avatar = await app.dao.kv_get("last_avatar_ts", 0) or 0
-        if now - last_avatar > 3 * 86400 and random.random() < (0.0015 + (0.008 if special else 0.0)):
-            await self._fire("avatar", "/avatar", "avatar", "换了头像")
+        # 头像：天级低频
+        if random.random() < (0.0015 + (0.008 if special else 0.0)):
+            result = await app.face.change_avatar(client)
+            logger.info(f"[AstrLover] 生活冲动·换头像：{result[:60]}")
 
-        # 签名：冷却 2 天
-        last_sign = await app.dao.kv_get("last_signature_ts", 0) or 0
-        if now - last_sign > 2 * 86400 and random.random() < 0.0025:
-            await self._fire("signature", "/signature", "signature", "改了签名")
+        # 签名
+        if random.random() < 0.0025:
+            await self._signature(client)
 
-    async def _fire(self, name: str, cmd: str, event_kind: str, desc_prefix: str):
+    async def _post(self, client):
         app = self.app
         try:
-            replies = await app.star.run_console_line(cmd)
-            summary = (replies[-1] if replies else "")[:80]
-            await app.dao.kv_set(f"last_{'post' if name == 'moment' else name}_ts", int(time.time()))
-            await app.dao.add_event(
-                event_kind,
-                f"{desc_prefix}：{summary}" if summary else desc_prefix,
-                motivation="今天是特别的日子" if app.clock.festivals_on(app.clock.today()) else "心血来潮",
+            text = await app.bridge.generate(
+                "你现在想发一条动态到自己的频道。写出正文即可，像发朋友圈那样，"
+                "短一点、有你的味道，和你此刻的生活或心情呼应。只输出正文。",
+                instruct="",
             )
-            logger.info(f"[AstrLover] 生活冲动 {name} 已执行：{summary}")
-        except Exception:
-            logger.error(f"[AstrLover] 生活冲动 {name} 失败：", exc_info=True)
+        except Exception as e:
+            logger.debug(f"[AstrLover] 动态构思失败：{e}")
+            return
+        # 自主行为受冷却与每日上限约束
+        result = await app.moments.post(client, text, quiet=random.random() < 0.5)
+        logger.info(f"[AstrLover] 生活冲动·发动态：{result[:60]}")
+
+    async def _signature(self, client):
+        app = self.app
+        try:
+            text = await app.bridge.generate(
+                "你想换一句资料页签名（120 字以内），和你最近的心情呼应。只输出签名本身。",
+                instruct="",
+            )
+        except Exception as e:
+            logger.debug(f"[AstrLover] 签名构思失败：{e}")
+            return
+        result = await app.face.update_signature(client, text)
+        logger.info(f"[AstrLover] 生活冲动·改签名：{result[:60]}")

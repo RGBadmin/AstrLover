@@ -1,6 +1,4 @@
-# AstrBot 主程序已提供：python-telegram-bot、faiss、aiosqlite、apscheduler、pyyaml、pillow、aiohttp
 aiohttp
 numpy
 pyyaml
-pillow
 zhdate

@@ -1,7 +1,7 @@
-"""定时动作执行器（D7）：到期的排期由心跳送到这里重放。
+"""排期执行器：到期的排期由心跳送到这里重放。
 
-排期的载荷就是一行控制台指令（/say /act /moment /avatar /signature …），
-执行时原样走 presence 控制台的派发通道——与你手敲指令完全同一条路，
+载荷就是一行控制台指令（/say /act /moment /photo /avatar /signature…），
+执行时原样走控制台的派发通道——与你手敲指令完全同一条路，
 回执发回你排期时所在的控制台会话。
 """
 
@@ -19,15 +19,14 @@ class ActionExecutor:
             if row["kind"] != "console_cmd" or not cmd:
                 await self.app.dao.finish_action(row["id"], "failed")
                 return
-            star = self.app.star
-            chat_id = str(payload.get("chat_id") or "").strip()
-            uid = str(payload.get("uid") or "").strip()
-            if chat_id and chat_id.lstrip("-").isdigit() and uid:
-                await star._console_run(int(chat_id), uid, cmd)
-            else:
-                replies = await star.run_console_line(cmd)
-                for r in replies:
-                    logger.info(f"[AstrLover] 排期 #{row['id']} 回执：{r[:120]}")
+            bot = self.app.director_bot
+            if bot is None:
+                await self.app.dao.finish_action(row["id"], "failed")
+                return
+            chat_id = payload.get("chat_id")
+            reply = await bot.console.handle(cmd, chat_id=chat_id)
+            if chat_id is not None and reply:
+                await bot.say(chat_id, f"⏰ 排期 #{row['id']} 已执行\n{reply}")
             await self.app.dao.finish_action(row["id"], "done")
             logger.info(f"[AstrLover] 排期 #{row['id']} 已执行：{cmd[:60]}")
         except Exception:

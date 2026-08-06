@@ -76,14 +76,20 @@ class ImageGen:
             str(p) for p in sorted(anchors_dir.glob("*"))
             if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
         ][:2] if anchors_dir.exists() else []
-        spec = build_spec(app.profile, app.dynamic, situation, anchor_paths)
+        if app.profile is None:  # 生命层关掉时没有档案，用纯情境描述生成
+            from .prompt_builder import PromptSpec, _NEGATIVE
+
+            spec = PromptSpec(positive=situation, negative=_NEGATIVE,
+                              reference_images=anchor_paths, situation=situation)
+        else:
+            spec = build_spec(app.profile, app.dynamic, situation, anchor_paths)
 
         # 优先落到 presence 相册目录，回流后可被她自己检索到
-        presence_dir = str(self.app.star.conf.get("gallery_dir") or "").strip() if hasattr(self.app.star, "conf") else ""
-        if presence_dir and Path(presence_dir).is_dir():
-            out_root = Path(presence_dir) / "aiimages"
+        album_dir = str(app.star_conf.get("gallery_dir") or "").strip()
+        if album_dir and Path(album_dir).is_dir():
+            out_root = Path(album_dir) / "aiimages"  # 回流：scan+index 后成为她相册的一部分
         else:
-            out_root = app.gallery_dir / "gen"
+            out_root = app.gallery_dir
 
         for backend in self.backends:
             try:

@@ -46,43 +46,34 @@ class Heartbeat:
     async def tick(self):
         app = self.app
 
-        # 1. 生活推进（纯代码）
-        await app.life.ensure_today_plan()
-        await app.life.advance()
-
-        # 2. 到期的待办动作（导演编排/她自己的打算，D7）
+        # 1. 到期排期（控制台指令重放）——生命层关掉也要跑
         if app.actions:
             for row in await app.dao.due_actions():
                 await app.actions.execute(row)
+
+        if not app.ready:
+            self._ticks += 1
+            return
+
+        # 2. 生活推进（纯代码，零 token）
+        await app.life.ensure_today_plan()
+        await app.life.advance()
 
         # 3. 记忆沉淀（对话空闲时）
         await app.memory.maybe_consolidate()
 
         # 4. 日记 / 周记
-        due = app.life.diary_due()
-        if due:
+        if due := app.life.diary_due():
             await app.memory.write_daily_diary(due)
         now = app.clock.now()
         if now.weekday() == 6 and now.hour >= 21:
             await app.memory.write_weekly(app.clock.week_str())
 
-        # 5. 主动消息意愿：过阈值 → 走 presence 的导演生成+投递+写回通道
-        if app.desire:
-            decision = await app.desire.evaluate()
-            if decision:
-                from .desire import reason_cn
+        # 5. 主动消息（意愿驱动）
+        if app.proactive:
+            await app.proactive.tick()
 
-                readable = "；".join(reason_cn(r) for r in decision["reasons"])
-                extra = (
-                    f"\n这次你想主动找他的具体缘由：{readable}。"
-                    "自然地体现在话里，不要报菜名式罗列。"
-                )
-                result = await app.star._proactive_fire(extra_brief=extra)
-                for r in decision["reasons"]:
-                    await app.desire.mark(r)
-                logger.info(f"[AstrLover] 意愿触发主动消息：{readable} → {result[:60]}")
-
-        # 6. 生活冲动：发动态/换头像/改签名（经 presence 控制台通道）
+        # 6. 生活冲动：发动态/换头像/改签名
         if app.impulses:
             await app.impulses.maybe_fire()
 

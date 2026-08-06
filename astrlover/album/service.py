@@ -22,6 +22,9 @@ class Album:
 
     # ---- 便捷转发（app.album.* 即 store.*，减少一层） ----
     def __getattr__(self, name):
+        # __init__ 完成前（或名字确实不存在）不能递归到自己身上
+        if name.startswith("_") or "store" not in self.__dict__:
+            raise AttributeError(name)
         return getattr(self.store, name)
 
     def abs_path(self, rel: str):

@@ -31,10 +31,13 @@ async def export_all(app, include_gallery: bool = True) -> Path:
                     for p in base.rglob("*"):
                         if p.is_file():
                             zf.write(p, str(p.relative_to(app.data_dir)))
-            if include_gallery and app.gallery_dir.exists():
-                for p in app.gallery_dir.rglob("*"):
-                    if p.is_file():
-                        zf.write(p, str(p.relative_to(app.data_dir)))
+            if include_gallery:
+                # 相册原图在用户自己的目录里，不进导出包；这里只带聊天图片存档
+                ctx = app.data_dir / "context_photos"
+                if ctx.exists():
+                    for p in ctx.rglob("*"):
+                        if p.is_file():
+                            zf.write(p, str(p.relative_to(app.data_dir)))
         logger.info(f"[AstrLover] 导出完成：{out.name}（{out.stat().st_size // 1024} KB）")
         return out
     finally:

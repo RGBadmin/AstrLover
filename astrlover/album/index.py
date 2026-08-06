@@ -72,7 +72,7 @@ class AlbumIndexer:
 
                 async def one(row):
                     nonlocal done, failed
-                    path = app.scanner.abs_path(row["path"])
+                    path = app.album.abs_path(row["path"])
                     if path is None:
                         await app.album.mark_fail(row["id"], own_fault=True)
                         failed += 1

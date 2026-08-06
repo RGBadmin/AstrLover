@@ -1,9 +1,11 @@
-"""App：生命模拟层的装配中心（管线形态）。
+"""App：全部子系统的装配中心与共享门面。
 
-自 v0.3 起不再接管对话：她的"生命"（人格/记忆/生活/情绪/时间/事件）
-经 on_llm_request 注入 AstrBot 默认管线的 system prompt；对话素材经
-钩子回流（chat_log 只作日记与沉淀的素材，上下文由 AstrBot 对话历史承载）。
-presence 层（相册/照片/动态/头像签名/控制台）在 astrlover/presence/。
+架构：骑在 AstrBot 默认对话管线上——对话历史、会话人格、其他插件、
+WebUI 一切照旧；本插件在管线上做两件事：
+  注入（on_llm_request）  她的此刻 + 历史动态时间线 + 图片记忆
+  捕获（on_llm_response） 图片目录层描述、生命层内部标记
+外加她自己的能力（相册/照片/动态/头像签名/语音/生图）作为 LLM 工具，
+以及一个只认管理员的导演 bot（插件自持 PTB，与 AstrBot 平台无关）。
 """
 
 import shutil
@@ -18,14 +20,15 @@ except ImportError:
     from astrbot.core.star.star_tools import StarTools
 
 from .actions import ActionExecutor
+from .album.service import Album
 from .chat.composer import extract_internal
 from .config import Cfg
-from .imagegen.base import ImageGen
-from .tg.channel import ChannelHub
-from .voice.service import VoiceService
-from .heart.desire import Desire
+from .director.bot import DirectorBot
+from .director.bridge import DirectorBridge
 from .heart.heartbeat import Heartbeat
 from .heart.impulses import Impulses
+from .heart.proactive import Proactive
+from .imagegen.base import ImageGen
 from .life.clock import Clock
 from .life.engine import LifeEngine
 from .life.mood import MoodEngine
@@ -36,67 +39,124 @@ from .panel.api import PanelApi
 from .persona.dynamic import DynamicState
 from .persona.profile import Profile
 from .persona.prompt import build_system_prompt
+from .photos.archive import PhotoArchive
+from .photos.memory import PhotoMemory
+from .photos.sender import PhotoSender
+from .presence.limits import Limits
+from .presence.moments import Moments
+from .presence.profile import ProfileFace
 from .store.dao import Dao
 from .store.db import Database
 from .store.vectors import Vectors
+from .tools import Tools
+from .vision.client import VisionClient
+from .voice.service import VoiceService
 
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 
 class App:
     def __init__(self, star, context, flat_conf: dict):
-        self.star = star          # AstrLover 实例（同时是 PresenceCore）
+        self.star = star
         self.context = context
-        self.cfg = Cfg(flat_conf)
-        self.ready = False
+        self.star_conf = flat_conf          # presence 侧配置（扁平）
+        self.cfg = Cfg(flat_conf)           # 生命层配置视图
+        self.ready = False                  # 生命模拟层是否可用
+        self.booted = False                 # 存储与 presence 子系统是否可用
 
         self.data_dir: Path = Path(StarTools.get_data_dir("astrlover"))
         self.persona_dir = self.data_dir / "persona"
         self.vec_dir = self.data_dir / "vec"
         self.voice_dir = self.data_dir / "voice"
-        self.gallery_dir = self.data_dir / "gallery" / "files"  # 生图产物落这里
+        self.gallery_dir = self.data_dir / "generated"
         self.export_dir = self.data_dir / "exports"
 
         self.db: Database | None = None
         self.dao: Dao | None = None
         self.vectors: Vectors | None = None
-        self.profile: Profile | None = None
-        self.dynamic: DynamicState | None = None
         self.clock: Clock | None = None
         self.llm: LLM | None = None
+
+        # presence 侧
+        self.vision: VisionClient | None = None
+        self.album: Album | None = None
+        self.photos: PhotoArchive | None = None
+        self.photo_memory: PhotoMemory | None = None
+        self.sender: PhotoSender | None = None
+        self.moments: Moments | None = None
+        self.face: ProfileFace | None = None
+        self.limits: Limits | None = None
+        self.tools: Tools | None = None
+        self.imagegen: ImageGen | None = None
+        self.voice: VoiceService | None = None
+
+        # 导演
+        self.bridge: DirectorBridge | None = None
+        self.director_bot: DirectorBot | None = None
+        self.state_target: str = ""
+
+        # 生命层
+        self.profile: Profile | None = None
+        self.dynamic: DynamicState | None = None
         self.working: WorkingMemory | None = None
         self.memory: MemoryPipeline | None = None
         self.life: LifeEngine | None = None
         self.mood: MoodEngine | None = None
+        self.proactive: Proactive | None = None
+        self.impulses: Impulses | None = None
+        self.actions: ActionExecutor | None = None
         self.heart: Heartbeat | None = None
         self.panel: PanelApi | None = None
-
-        # N3/N4 阶段接回的服务（心跳与面板对它们做 None 保护）
-        self.actions = None
-        self.impulses = None
-        self.desire = None
-        self.planner = None
-        self.gallery = None
-        self.imagegen = None
-        self.voice = None
-        self.tgsvc = None
-        self.channel_hub = None
 
     # ==================================================================
     # 生命周期
     # ==================================================================
     async def initialize(self):
-        if not self.cfg.enabled:
-            logger.info("[AstrLover] 生命模拟层已在配置中关闭，仅运行 presence 功能。")
-            return
-
         for d in (self.persona_dir, self.vec_dir, self.voice_dir, self.gallery_dir, self.export_dir):
             d.mkdir(parents=True, exist_ok=True)
 
+        self.clock = Clock(self.cfg.timezone)
+        self.db = Database(self.data_dir / "astrlover.db")
+        await self.db.open()
+        self.dao = Dao(self.db)
+        self.vectors = Vectors(self.vec_dir, self.context, self.cfg.embedding_provider_id)
+        self.llm = LLM(self.context, self.cfg)
+
+        self.vision = VisionClient(self.star_conf)
+        self.album = Album(self)
+        self.photos = PhotoArchive(self)
+        self.photo_memory = PhotoMemory(self)
+        self.sender = PhotoSender(self)
+        self.limits = Limits(self)
+        self.moments = Moments(self)
+        self.face = ProfileFace(self)
+        self.imagegen = ImageGen(self)
+        self.voice = VoiceService(self)
+        self.tools = Tools(self)
+
+        self.state_target = str(await self.dao.kv_get("director_target", "") or "")
+        self.bridge = DirectorBridge(self)
+        self.director_bot = DirectorBot(self)
+        await self.director_bot.start()
+        self.booted = True
+
+        # ---- 生命模拟层（可关）----
+        if self.cfg.enabled:
+            await self._init_life()
+
+        self.actions = ActionExecutor(self)
+        self.heart = Heartbeat(self)
+        self.heart.start()
+
+        self.panel = PanelApi(self)
+        self.panel.register()
+        logger.info("[AstrLover] 装配完成。")
+
+    async def _init_life(self):
         profile_path = self.persona_dir / "profile.yaml"
         if not profile_path.exists():
             shutil.copy(_PLUGIN_ROOT / "examples" / "persona.example.yaml", profile_path)
-            logger.info(f"[AstrLover] 已生成生命档案模板：{profile_path}，请按需编辑。")
+            logger.info(f"[AstrLover] 已生成生命档案模板：{profile_path}")
         self.profile = Profile.load(profile_path)
         self.dynamic = DynamicState(self.persona_dir / "dynamic.yaml")
         self.dynamic.load()
@@ -105,120 +165,131 @@ class App:
         if self.profile.anniversary:
             self.dynamic.add_milestone(self.profile.anniversary, "在一起的纪念日")
 
-        self.clock = Clock(self.cfg.timezone)
-        self.db = Database(self.data_dir / "astrlover.db")
-        await self.db.open()
-        self.dao = Dao(self.db)
-        self.vectors = Vectors(self.vec_dir, self.context, self.cfg.embedding_provider_id)
-        self.llm = LLM(self.context, self.cfg)
-        umo = await self.dao.kv_get("linked_umo")
-        if umo:
-            self.llm.owner_umo = umo
-
         self.working = WorkingMemory(self.dao)
         self.memory = MemoryPipeline(self)
         self.life = LifeEngine(self)
         self.mood = MoodEngine(self.dao)
-        self.desire = Desire(self)
+        self.proactive = Proactive(self)
         self.impulses = Impulses(self)
-        self.actions = ActionExecutor(self)
-        self.heart = Heartbeat(self)
-
-        self.imagegen = ImageGen(self)
-        self.voice = VoiceService(self)
-        self.channel_hub = ChannelHub(self)
-
-        self.panel = PanelApi(self)
-        self.panel.register()
-
         await self._seed_backstory()
-        self.heart.start()
         self.ready = True
         logger.info(f"[AstrLover] 生命模拟层就绪：{self.profile.name} 醒来了。")
 
     async def terminate(self):
-        self.ready = False
+        self.ready = self.booted = False
         if self.heart:
             await self.heart.stop()
+        if self.director_bot:
+            await self.director_bot.stop()
+        if self.photo_memory:
+            self.photo_memory.cancel_all()
+        if self.album:
+            self.album.indexer.stop()
+            self.album.embedder.stop()
         if self.vectors:
             await self.vectors.close()
         if self.db:
             await self.db.close()
 
     # ==================================================================
-    # 管线钩子实现（main.py 委托过来）
+    # 管线钩子
     # ==================================================================
-    def _is_partner(self, event) -> bool:
+    def is_partner(self, event) -> bool:
         pid = self.cfg.partner_id
         return bool(pid) and str(event.get_sender_id()) == pid
 
-    async def hook_llm_request(self, event, req):
-        """把她的"此刻"注入 system prompt；恋人的话进入她的记忆素材。"""
+    @staticmethod
+    def inject_text(req, block: str) -> str:
+        """优先塞进 user turn 末尾（贴着当前问题，且不落进对话历史），
+        回退 system_prompt。"""
+        try:
+            from astrbot.core.agent.message import TextPart
+
+            req.extra_user_content_parts.append(TextPart(text=block).mark_as_temp())
+            return "extra_user_content_parts"
+        except Exception:
+            req.system_prompt = (req.system_prompt or "") + "\n\n" + block + "\n"
+            return "system_prompt"
+
+    async def on_llm_request(self, event, req):
+        """一次请求里做完全部注入，顺序自己控制（不靠多个钩子的优先级）。"""
+        if not self.booted:
+            return
+        try:
+            await self.photo_memory.register(req)      # 登记落盘 + 派发细节层
+            await self.photo_memory.ask_descriptions(req)
+            await self.photo_memory.serve_recalled(req)
+            await self.moments.inject(req)             # 历史动态插进时间线
+            await self.photo_memory.prune(req)         # 最后折叠（编号都已分配）
+        except Exception:
+            logger.error("[AstrLover] presence 注入失败：", exc_info=True)
+
         if not self.ready:
             return
         try:
-            is_partner = self._is_partner(event)
+            is_partner = self.is_partner(event)
             if is_partner:
                 self.llm.owner_umo = event.unified_msg_origin
-                await self.dao.kv_set("linked_umo", event.unified_msg_origin)
                 text = (event.message_str or "").strip()
                 if text:
                     await self.working.log_user(text)
                     await self.mood.on_user_message(text)
-                await self.dao.kv_set("last_user_ts", int(time.time()))
-                # 他回话了：presence 的"连续未回"计数清零
-                # （其 note_user_activity 只在自带倒计时开启时处理）
-                st = self.star.state.setdefault("proactive", {})
-                if st.get("unanswered"):
-                    st["unanswered"] = 0
-                    self.star._save_state()
-
+                await self.proactive.on_user_message()
             query = (event.message_str or "").strip() or "聊天"
             extra = "" if is_partner else (
                 "【注意】现在跟你说话的不是你的恋人本人（可能是陌生人或群聊），"
                 "按你的性格和边界应对：礼貌、有分寸、不透露你们的私事。"
             )
-            life_context = await self.build_master_prompt(query, extra_note=extra)
-            req.system_prompt = (req.system_prompt or "") + "\n\n" + life_context
+            self.inject_text(req, await self.build_master_prompt(query, extra_note=extra))
         except Exception:
             logger.error("[AstrLover] 生命层注入失败：", exc_info=True)
 
-    async def hook_llm_response(self, event, resp):
-        """摘走内部标记（编造固化/事件提及），回复文本回流记忆素材。"""
-        if not self.ready or not self._is_partner(event):
+    async def on_llm_response(self, event, resp):
+        if not self.booted:
             return
+        text = getattr(resp, "completion_text", None)
+        if not isinstance(text, str) or not text:
+            return
+        out = text
         try:
-            text = getattr(resp, "completion_text", None) or ""
-            if not text:
-                return
-            clean, improvs, told, found = extract_internal(text)
-            for note in improvs:
-                await self.fix_improvised(note)
-            for eid in told:
-                await self.dao.set_event_mention(eid, "told")
-            for eid in found:
-                await self.dao.set_event_mention(eid, "discovered")
-            if clean != text:
-                resp.completion_text = clean
-            if clean.strip():
-                await self.working.log_her(clean.strip())
-            await self.dao.kv_set("memory_dirty", 1)
+            out, _n = await self.photo_memory.capture(out)
         except Exception:
-            logger.error("[AstrLover] 生命层响应处理失败：", exc_info=True)
+            logger.error("[AstrLover] 图片描述捕获失败：", exc_info=True)
+        if self.ready and self.is_partner(event):
+            try:
+                out, improvs, told, found = extract_internal(out)
+                for note in improvs:
+                    await self.fix_improvised(note)
+                for eid in told:
+                    await self.dao.set_event_mention(eid, "told")
+                for eid in found:
+                    await self.dao.set_event_mention(eid, "discovered")
+                if out.strip():
+                    await self.working.log_her(out.strip())
+                await self.dao.kv_set("memory_dirty", 1)
+            except Exception:
+                logger.error("[AstrLover] 生命层响应处理失败：", exc_info=True)
+        if out != text:
+            resp.completion_text = out.strip()
+
+    async def silent_now(self) -> bool:
+        """/noreply 静默期：她先听着不回话。"""
+        if not self.booted:
+            return False
+        until = await self.dao.kv_get("silent_until", 0) or 0
+        return until == -1 or (until > 0 and until > time.time())
 
     # ==================================================================
-    # 提示词组装
+    # 提示词
     # ==================================================================
     async def build_master_prompt(self, query_text: str, extra_note: str = "") -> str:
         clock_text = self.clock.describe_now(self.profile.met_on, self.profile.anniversary)
-        specials = self.clock.upcoming_specials(
+        if specials := self.clock.upcoming_specials(
             self.dynamic.milestones, self.profile.birthday, within_days=3
-        )
-        if specials:
+        ):
             clock_text += "（" + "；".join(specials) + "）"
         return build_system_prompt(
-            self.profile,
-            self.dynamic,
+            self.profile, self.dynamic,
             clock_text=clock_text,
             life_text=await self.life.prompt_text() if self.life else "",
             mood_text=await self.mood.prompt_text() if self.mood else "",
@@ -238,10 +309,11 @@ class App:
         rows = await self.dao.unmentioned_events(n=5)
         if not rows:
             return ""
-        lines = []
-        for r in rows:
-            motive = f"（当时的想法：{r['motivation']}）" if r["motivation"] else ""
-            lines.append(f"[{r['id']}] {r['description']}{motive}")
+        lines = [
+            f"[{r['id']}] {r['description']}"
+            + (f"（当时的想法：{r['motivation']}）" if r["motivation"] else "")
+            for r in rows
+        ]
         lines.append(
             "这些事他还不知道。想说就自然地讲；不说也行，等他自己发现——发现时要用当时真实的理由回答。"
         )
@@ -250,23 +322,198 @@ class App:
     # ==================================================================
     # 跨子系统动作
     # ==================================================================
+    async def set_target(self, umo: str):
+        self.state_target = umo
+        await self.dao.kv_set("director_target", umo)
+        if umo:
+            self.llm.owner_umo = umo
+        logger.info(f"[AstrLover] 绑定会话：{umo or '（无）'}")
+
+    async def send_photo_as_her(self, photo_id: str, caption: str = "") -> str:
+        """控制台/排期用：借她的身份把照片发到绑定会话。"""
+        from astrbot.api.event import MessageChain
+
+        kind, row, path = await self.sender.resolve(photo_id)
+        if row is None or path is None:
+            return f"找不到 {photo_id} 或文件已不在。"
+        chain = MessageChain()
+        if caption:
+            chain.message(caption)
+        chain.file_image(str(path))
+        try:
+            ok = await self.context.send_message(self.state_target, chain)
+        except Exception as e:
+            return f"没发出去：{e}"
+        if not ok:
+            return "找不到目标平台，那个 bot 还连着吗？"
+        if kind == "album":
+            await self.album.mark_sent(int(row["id"]))
+        note = caption or f"[发了一张照片 {photo_id}]"
+        await self.bridge.append_assistant(self.state_target, note)
+        return f"已发出 {photo_id}" + (f"，附言：{caption}" if caption else "")
+
     async def fix_improvised(self, note: str):
-        """A6 编造固化：临场发挥立刻成为永久事实。"""
         fact_id = await self.dao.add_fact("self", note, category="编造固化", source="improvise")
-        vec_id = await self.vectors.add_memory(note, {"type": "fact", "fact_id": fact_id})
-        if vec_id:
+        if vec_id := await self.vectors.add_memory(note, {"type": "fact", "fact_id": fact_id}):
             await self.dao.set_fact_vec(fact_id, vec_id)
         logger.info(f"[AstrLover] 编造固化：{note}")
-
-    async def linked_umo(self) -> str:
-        return str(await self.dao.kv_get("linked_umo") or "")
 
     async def _seed_backstory(self):
         if await self.dao.kv_get("backstory_seeded"):
             return
         for item in self.profile.backstory:
             fact_id = await self.dao.add_fact("self", item, category="身世", source="init")
-            vec_id = await self.vectors.add_memory(item, {"type": "fact", "fact_id": fact_id})
-            if vec_id:
+            if vec_id := await self.vectors.add_memory(item, {"type": "fact", "fact_id": fact_id}):
                 await self.dao.set_fact_vec(fact_id, vec_id)
         await self.dao.kv_set("backstory_seeded", 1)
+
+    # ==================================================================
+    # 控制台委托：相册 / 视觉 / 状态
+    # ==================================================================
+    async def gallery_command(self, arg: str, progress_cb=None) -> str:
+        album = self.album
+        parts = (arg or "").split()
+        action = parts[0].lower() if parts else ""
+        rest = parts[1:]
+
+        if not action:
+            return await album.overview()
+        if action == "scan":
+            if rest and rest[0] == "reset":
+                if len(rest) > 1 and rest[1] == "go":
+                    return await album.reset()
+                return "这会清空整个库（描述和向量一起没）。确定就发 /gallery scan reset go"
+            res = await album.scanner.scan(
+                prune=bool(rest and rest[0] == "prune"),
+                use_snowflake=bool(self.star_conf.get("use_snowflake_time", True)),
+            )
+            if "error" in res:
+                return res["error"]
+            return (f"扫描完成：磁盘 {res['total']} 张，新增 {res['added']} 张"
+                    + (f"，清理 {res['pruned']} 条" if res["pruned"] else "")
+                    + (f"\n分类：{'、'.join(res['folders'])}" if res["folders"] else ""))
+        if action == "index":
+            sub = rest[0] if rest else ""
+            if sub == "stop":
+                album.indexer.stop()
+                return "已停止后台索引，进度不丢。"
+            if sub in ("auto", ""):
+                if album.indexer.start_auto(progress_cb):
+                    return "后台索引已开始，跑完会报告。/gallery index stop 可以停。"
+                return "后台索引已经在跑了。"
+            if sub.isdigit():
+                return await album.indexer.run_count(int(sub), progress_cb)
+            return "用法：/gallery index auto | 50 | stop"
+        if action == "embed":
+            sub = rest[0] if rest else ""
+            if sub == "stop":
+                album.embedder.stop()
+                return "已停止向量转换。"
+            if sub == "test":
+                return await album.embedder.probe()
+            if sub == "redo":
+                return await album.embedder.redo_all()
+            if sub in ("auto", ""):
+                if album.embedder.start_auto(progress_cb):
+                    return "后台向量转换已开始。"
+                return "向量转换已经在跑了。"
+            if sub.isdigit():
+                return await album.embedder.run_count(int(sub), progress_cb)
+            return "用法：/gallery embed auto | 500 | test | redo | stop"
+        if action == "search":
+            if not rest:
+                return "用法：/gallery search 黑丝 车里"
+            rows, report = await album.search(keywords=" ".join(rest), top_k=8)
+            head = report.text()
+            if not rows:
+                return head + "\n（没有结果）"
+            body = "\n".join(
+                f"g{r['id']}｜{r['rating']}/{r['season']}｜{(r['desc'] or '')[:80]}" for r in rows
+            )
+            return head + "\n" + body
+        if action == "show":
+            row = await album.get(int(rest[0].lstrip("gG"))) if rest and rest[0].lstrip("gG").isdigit() else await album.random_ok()
+            if row is None:
+                return "没有这张，或库里还没有已索引的图。"
+            return f"g{row['id']}｜{row['path']}\n{row['rating']}/{row['season']}\n{row['desc']}"
+        if action == "polish":
+            return await album.polish()
+        if action == "clean":
+            return await album.clean()
+        if action == "retry":
+            return await album.retry()
+        if action == "audit":
+            return await album.audit()
+        if action == "redo":
+            if rest and rest[0].lstrip("gG").isdigit():
+                return await album.redo(int(rest[0].lstrip("gG")))
+            return "用法：/gallery redo g123"
+        if action.lstrip("gG").isdigit():
+            row = await album.get(int(action.lstrip("gG")))
+            if row is None:
+                return f"没有 {action} 这张。"
+            return f"g{row['id']}｜{row['path']}\n{row['desc'][:400]}"
+        return ("用法：/gallery [scan|index|embed|search|show|polish|clean|retry|audit|redo]\n"
+                "详见 README。")
+
+    async def vision_command(self, arg: str) -> str:
+        sub = (arg or "").strip().lower()
+        if sub == "test":
+            cfg = self.vision.config()
+            if cfg is None:
+                return "视觉 API 未配置（地址/Key/模型三项都要填）。"
+            head = f"格式 {cfg.fmt} · 模型 {cfg.model}\n地址 {self.vision._url(cfg)}"
+            row = await self.album.random_ok() or None
+            path = None
+            if row:
+                path = self.album.abs_path(row["path"])
+            if path is None:
+                rows = await self.db.fetchall("SELECT * FROM photo_archive ORDER BY id DESC LIMIT 1")
+                if rows:
+                    path = self.photos.abs_path(rows[0])
+            if path is None:
+                return head + "\n\n（没有可用来测试的图片，先 /gallery scan 或在聊天里发一张）"
+            try:
+                text, _ = await self.vision.describe_once(str(path))
+                return head + f"\n\n✅ 通了，返回 {len(text)} 字：\n{text[:300]}"
+            except Exception as e:
+                return head + f"\n\n❌ {type(e).__name__}: {e}"
+        if sub in ("", "backfill"):
+            return await self.photo_memory.backfill_details()
+        return "用法：/vision test | /vision backfill"
+
+    async def status_report(self) -> str:
+        lines = ["🌸 AstrLover 状态", ""]
+        lines.append(f"🔗 绑定会话：{self.state_target or '（未绑定，/umo 看、/link 绑）'}")
+        if self.ready:
+            lines.append(self.clock.describe_now(self.profile.met_on, self.profile.anniversary))
+            cur = await self.life.current_activity()
+            lines.append(f"🧍 此刻：{cur}" + ("（睡眠时段）" if self.life.sleeping_now() else ""))
+            if sched := await self.dao.day_schedule(self.clock.today_str()):
+                lines.append("📅 " + "；".join(f"{s['start_hm']} {s['activity']}[{s['status']}]" for s in sched))
+            lines.append(f"💭 {await self.mood.prompt_text() or '心情平静。'}")
+            facts = len(await self.dao.list_facts(limit=1000))
+            sheet = await self.dao.latest_cheatsheet()
+            diaries = await self.dao.recent_diaries(1)
+            lines.append(
+                f"🧠 记忆：事实 {facts} 条 · 小抄 v{sheet['version'] if sheet else 0} · "
+                f"最近日记 {diaries[0]['date'] if diaries else '（还没写过）'}"
+            )
+        else:
+            lines.append("（生命模拟层未启用）")
+        st = await self.album.stats()
+        lines.append(
+            f"🖼 相册：已索引 {st.get('ok', 0)} · 待索引 {st.get('pending', 0)} · "
+            f"失败 {st.get('failed', 0)} · 已转向量 {st.get('embedded', 0)}"
+        )
+        checks = [
+            ("视觉", self.vision.ready()),
+            ("向量", self.vectors.available or not self.vectors._init_failed),
+            ("生图", bool(self.imagegen and self.imagegen.available)),
+            ("语音", bool(self.voice and self.voice.tts_ready)),
+            ("频道", bool(self.moments.channel())),
+        ]
+        lines.append("🔌 " + "  ".join(f"{n}{'✅' if ok else '❌'}" for n, ok in checks))
+        if self.ready:
+            lines.append("💌 " + (await self.proactive.status()).splitlines()[0])
+        return "\n".join(lines)

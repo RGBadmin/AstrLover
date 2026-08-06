@@ -97,24 +97,6 @@ CREATE TABLE IF NOT EXISTS cheatsheet (
     updated_ts INTEGER NOT NULL
 );
 
--- 图库（R4）
-CREATE TABLE IF NOT EXISTS gallery (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    file         TEXT NOT NULL,           -- 数据目录相对路径
-    category     TEXT NOT NULL DEFAULT 'life', -- selfie/life/scene/sticker
-    desc         TEXT NOT NULL DEFAULT '',     -- 打标综合描述（检索语言）
-    tags         TEXT NOT NULL DEFAULT '{}',   -- 结构化打标 JSON
-    appearance   TEXT NOT NULL DEFAULT '{}',   -- 外观标签（发型等，A9 过滤用）
-    source       TEXT NOT NULL DEFAULT 'user', -- user/gen
-    is_anchor    INTEGER NOT NULL DEFAULT 0,   -- 外观锚点（生图参考）
-    status       TEXT NOT NULL DEFAULT 'pending', -- pending/ok/failed
-    created_ts   INTEGER NOT NULL,
-    last_used_ts INTEGER NOT NULL DEFAULT 0,
-    used_count   INTEGER NOT NULL DEFAULT 0,
-    vec_id       TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_gallery_cat ON gallery (category, status);
-
 -- 待执行动作（D7：定时/延时统一队列，重启天然恢复）
 CREATE TABLE IF NOT EXISTS pending_actions (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

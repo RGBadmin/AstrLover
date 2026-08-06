@@ -1,10 +1,8 @@
-"""生命层配置：读 presence 层压平后的扁平配置字典（单一配置体系）。
+"""生命层配置视图：读插件压平后的扁平配置。
 
-键名见 _conf_schema.json 的 life / life_models / imagegen 三组；
-分组只是配置页排版，代码一律按扁平 key 读（与 presence 层同一哲学）。
+分组只是配置页的排版，代码一律按扁平 key 读。
+presence 侧的配置直接用 app.star_conf[...]，不再包一层。
 """
-
-from typing import Any
 
 
 class Cfg:
@@ -21,7 +19,7 @@ class Cfg:
         except (TypeError, ValueError):
             return default
 
-    # ---- life ----
+    # ---- 生命层 ----
     @property
     def enabled(self) -> bool:
         return bool(self._c.get("life_enabled", True))
@@ -33,35 +31,17 @@ class Cfg:
     @property
     def partner_id(self) -> str:
         """恋人 user id：优先 life_partner_id，退化为控制台管理员。"""
-        pid = self._s("life_partner_id")
-        if pid:
+        if pid := self._s("life_partner_id"):
             return pid
         admins = self._c.get("console_admins")
         if isinstance(admins, list) and admins:
             return str(admins[0]).strip()
-        return self._s("console_admins")
-
-    @property
-    def discussion_group_id(self) -> str:
-        return self._s("life_discussion_group_id")
+        return self._s("console_admins").split(",")[0].strip()
 
     @property
     def heartbeat_minutes(self) -> int:
         return max(1, self._i("life_heartbeat_minutes", 5))
 
-    @property
-    def proactive_enabled(self) -> bool:
-        return bool(self._c.get("life_proactive", True))
-
-    @property
-    def proactive_min_gap_minutes(self) -> int:
-        return self._i("life_proactive_min_gap_minutes", 45)
-
-    @property
-    def max_silence_hours(self) -> int:
-        return max(1, self._i("life_max_silence_hours", 30))
-
-    # ---- life_models ----
     @property
     def light_provider_id(self) -> str:
         return self._s("life_light_provider_id")
@@ -76,9 +56,22 @@ class Cfg:
 
     @property
     def stt_provider_id(self) -> str:
-        return self._s("life_stt_provider_id")
+        return ""  # STT 由 AstrBot 主管线负责，本插件不参与
 
-    # ---- imagegen ----
+    # ---- 主动消息 ----
+    @property
+    def proactive_enabled(self) -> bool:
+        return bool(self._c.get("life_proactive", True))
+
+    @property
+    def proactive_min_gap_minutes(self) -> int:
+        return self._i("life_proactive_min_gap_minutes", 45)
+
+    @property
+    def max_silence_hours(self) -> int:
+        return max(1, self._i("life_max_silence_hours", 30))
+
+    # ---- 生图 ----
     @property
     def imagegen_order(self) -> list[str]:
         v = self._c.get("ig_backend_order", [])
@@ -87,23 +80,11 @@ class Cfg:
     def imagegen_backend(self, name: str) -> dict:
         c = self._c
         if name == "nanobanana":
-            return {
-                "api_key": c.get("ig_nb_api_key", ""),
-                "base_url": c.get("ig_nb_base_url", ""),
-                "model": c.get("ig_nb_model", ""),
-            }
+            return {"api_key": c.get("ig_nb_api_key", ""), "base_url": c.get("ig_nb_base_url", ""),
+                    "model": c.get("ig_nb_model", "")}
         if name == "comfyui":
-            return {
-                "base_url": c.get("ig_comfy_base_url", ""),
-                "api_key": c.get("ig_comfy_api_key", ""),
-                "workflow_file": c.get("ig_comfy_workflow", "comfyui_workflow.json"),
-            }
+            return {"base_url": c.get("ig_comfy_base_url", ""), "api_key": c.get("ig_comfy_api_key", ""),
+                    "workflow_file": c.get("ig_comfy_workflow", "comfyui_workflow.json")}
         if name == "novelai":
-            return {
-                "api_key": c.get("ig_nai_api_key", ""),
-                "model": c.get("ig_nai_model", ""),
-            }
+            return {"api_key": c.get("ig_nai_api_key", ""), "model": c.get("ig_nai_model", "")}
         return {}
-
-    def raw(self, key: str, default: Any = None) -> Any:
-        return self._c.get(key, default)

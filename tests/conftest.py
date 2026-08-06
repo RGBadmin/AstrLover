@@ -55,9 +55,34 @@ def _install_astrbot_stub():
     star.Star = object
     star.StarTools = object
 
+    comps = types.ModuleType("astrbot.api.message_components")
+
+    class Record:
+        def __init__(self, file=None, text=None, **_kw):
+            self.file, self.text = file, text
+
+    class Image:
+        def __init__(self, file=None, **_kw):
+            self.file = file
+
+    class Plain:
+        def __init__(self, text="", **_kw):
+            self.text = text
+
+    comps.Record, comps.Image, comps.Plain = Record, Image, Plain
+
+    web = types.ModuleType("astrbot.api.web")
+    web.request = types.SimpleNamespace(json=None, query=None)
+    web.json_response = lambda data, **_k: data
+    web.error_response = lambda msg, **_k: {"error": msg}
+    web.file_response = lambda path, **_k: {"file": str(path)}
+    web.PluginUploadFile = object
+
     api.event = event
     api.provider = provider
     api.star = star
+    api.web = web
+    api.message_components = comps
     astrbot.api = api
 
     sys.modules.update({
@@ -66,6 +91,8 @@ def _install_astrbot_stub():
         "astrbot.api.event": event,
         "astrbot.api.provider": provider,
         "astrbot.api.star": star,
+        "astrbot.api.web": web,
+        "astrbot.api.message_components": comps,
     })
 
 
