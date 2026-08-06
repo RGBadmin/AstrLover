@@ -3,32 +3,38 @@ from astrlover.config import Cfg
 
 def test_defaults_on_empty():
     cfg = Cfg({})
+    assert cfg.enabled is True
     assert cfg.timezone == "Asia/Shanghai"
-    assert cfg.min_gap_minutes == 45
-    assert cfg.max_silence_hours == 30
-    assert cfg.max_unanswered == 3
     assert cfg.heartbeat_minutes == 5
+    assert cfg.partner_id == ""
     assert cfg.imagegen_order == []
 
 
-def test_missing_required():
-    missing = Cfg({}).missing_required()
-    assert len(missing) == 2
-    cfg = Cfg({"wiring": {"main_platform_id": "tg_main", "owner_id": "123"}})
-    assert cfg.missing_required() == []
+def test_partner_fallback_console_admins():
+    assert Cfg({"life_partner_id": "111", "console_admins": ["222"]}).partner_id == "111"
+    assert Cfg({"console_admins": ["222", "333"]}).partner_id == "222"
+    assert Cfg({"console_admins": "444"}).partner_id == "444"
 
 
-def test_nested_read():
+def test_flat_reads():
     cfg = Cfg({
-        "models": {"chat_provider_id": " gpt "},
-        "imagegen": {"backend_order": ["nanobanana", ""], "nanobanana": {"api_key": "k"}},
-        "proactive": {"min_gap_minutes": 10},
+        "life_timezone": " Asia/Tokyo ",
+        "life_heartbeat_minutes": 10,
+        "life_light_provider_id": " light ",
+        "ig_backend_order": ["nanobanana", ""],
+        "ig_nb_api_key": "k",
     })
-    assert cfg.chat_provider_id == "gpt"
+    assert cfg.timezone == "Asia/Tokyo"
+    assert cfg.heartbeat_minutes == 10
+    assert cfg.light_provider_id == "light"
     assert cfg.imagegen_order == ["nanobanana"]
-    assert cfg.imagegen_backend("nanobanana") == {"api_key": "k"}
-    assert cfg.min_gap_minutes == 10
+    assert cfg.imagegen_backend("nanobanana")["api_key"] == "k"
 
 
 def test_heartbeat_floor():
-    assert Cfg({"system": {"heartbeat_minutes": 0}}).heartbeat_minutes == 1
+    assert Cfg({"life_heartbeat_minutes": 0}).heartbeat_minutes == 1
+    assert Cfg({"life_heartbeat_minutes": "bad"}).heartbeat_minutes == 5
+
+
+def test_disabled():
+    assert Cfg({"life_enabled": False}).enabled is False

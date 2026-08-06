@@ -692,5 +692,131 @@
         "hint": "关闭后任何人都能用指令操作这个 bot 的资料。头像和签名是全局生效的，建议保持开启。管理员名单读的是 AstrBot 的 admins_id；被拦下来但确信自己是管理员的话，发 /whoami 看这个会话实际路由到哪个配置文件——bot 名和配置文件名相同不等于自动绑定。"
       }
     }
+  },
+  "life": {
+    "description": "⑪ 生命模拟",
+    "type": "object",
+    "hint": "她的人格、作息、记忆、心跳。人格档案在 data/plugin_data/astrlover/persona/profile.yaml，Web 面板可编辑。",
+    "items": {
+      "life_enabled": {
+        "description": "启用生命模拟层",
+        "type": "bool",
+        "default": true,
+        "hint": "注入人格/记忆/生活状态/情绪/时间感知，心跳推进她的生活并写日记。关掉则本插件退化为纯 presence 功能。"
+      },
+      "life_timezone": {
+        "description": "她所在时区",
+        "type": "string",
+        "default": "Asia/Shanghai"
+      },
+      "life_partner_id": {
+        "description": "恋人（你）的 Telegram 数字 user id",
+        "type": "string",
+        "default": "",
+        "hint": "只有这个人的对话会进入她的记忆与日记；留空则退化为「控制台管理员 ID」。"
+      },
+      "life_discussion_group_id": {
+        "description": "频道关联讨论组 chat id",
+        "type": "string",
+        "default": "",
+        "hint": "用于动态评论区互动闭环（她回评论、你的留言回流她的认知）。留空禁用。"
+      },
+      "life_heartbeat_minutes": {
+        "description": "心跳间隔（分钟）",
+        "type": "int",
+        "default": 5,
+        "hint": "生命活动推进频率，纯代码不耗 token。"
+      }
+    }
+  },
+  "life_models": {
+    "description": "⑫ 生命层模型",
+    "type": "object",
+    "hint": "记忆沉淀/日记等用的模型，走 AstrBot 服务提供商体系，填 Provider ID。",
+    "items": {
+      "life_light_provider_id": {
+        "description": "轻量决策模型 Provider ID",
+        "type": "string",
+        "default": "",
+        "hint": "记忆沉淀、小抄修订等高频低难度调用；留空 = 用会话当前模型。"
+      },
+      "life_embedding_provider_id": {
+        "description": "Embedding Provider ID",
+        "type": "string",
+        "default": "",
+        "hint": "她的记忆（事实/日记）语义召回用；留空则记忆召回降级为最近优先。"
+      },
+      "life_tts_provider_id": {
+        "description": "TTS Provider ID",
+        "type": "string",
+        "default": "",
+        "hint": "语音条能力（send_voice 工具）；留空禁用。",
+        "_special": "select_provider_tts"
+      },
+      "life_stt_provider_id": {
+        "description": "STT Provider ID",
+        "type": "string",
+        "default": "",
+        "hint": "听懂你的语音条；留空禁用。"
+      }
+    }
+  },
+  "imagegen": {
+    "description": "⑬ 生图后端",
+    "type": "object",
+    "hint": "相册里翻不到足够贴切的图时降级现场生成，生成图回流相册。三后端可并存按序降级。",
+    "items": {
+      "ig_backend_order": {
+        "description": "启用的后端及优先顺序",
+        "type": "list",
+        "default": [
+          "nanobanana",
+          "comfyui",
+          "novelai"
+        ],
+        "hint": "nanobanana / comfyui / novelai"
+      },
+      "ig_nb_api_key": {
+        "description": "NanoBanana API Key",
+        "type": "string",
+        "default": ""
+      },
+      "ig_nb_base_url": {
+        "description": "NanoBanana API 地址",
+        "type": "string",
+        "default": "https://generativelanguage.googleapis.com"
+      },
+      "ig_nb_model": {
+        "description": "NanoBanana 模型名",
+        "type": "string",
+        "default": "gemini-2.5-flash-image"
+      },
+      "ig_comfy_base_url": {
+        "description": "ComfyUI 服务地址",
+        "type": "string",
+        "default": ""
+      },
+      "ig_comfy_api_key": {
+        "description": "ComfyUI 鉴权 Key",
+        "type": "string",
+        "default": ""
+      },
+      "ig_comfy_workflow": {
+        "description": "ComfyUI workflow 文件",
+        "type": "string",
+        "default": "comfyui_workflow.json",
+        "hint": "API 格式 JSON，放插件数据目录，{POSITIVE}/{NEGATIVE}/{SEED} 占位。"
+      },
+      "ig_nai_api_key": {
+        "description": "NovelAI API Key",
+        "type": "string",
+        "default": ""
+      },
+      "ig_nai_model": {
+        "description": "NovelAI 模型名",
+        "type": "string",
+        "default": "nai-diffusion-4-5-full"
+      }
+    }
   }
 }

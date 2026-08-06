@@ -1,124 +1,97 @@
-"""配置封装：把 _conf_schema.json 的嵌套结构包成带类型默认值的只读属性。
+"""生命层配置：读 presence 层压平后的扁平配置字典（单一配置体系）。
 
-原则（ailover.md 原则3）：这里只有"接线"与防打扰最小集合，
-没有任何表现强度旋钮——表现由生命档案推导。
+键名见 _conf_schema.json 的 life / life_models / imagegen 三组；
+分组只是配置页排版，代码一律按扁平 key 读（与 presence 层同一哲学）。
 """
 
 from typing import Any
 
 
 class Cfg:
-    def __init__(self, raw: dict):
-        self._raw = raw or {}
+    def __init__(self, flat: dict):
+        self._c = flat or {}
 
-    def _g(self, *path: str, default: Any = "") -> Any:
-        node: Any = self._raw
-        for key in path:
-            if not isinstance(node, dict) or key not in node:
-                return default
-            node = node[key]
-        return node if node is not None else default
+    def _s(self, key: str, default: str = "") -> str:
+        v = self._c.get(key, default)
+        return str(v).strip() if v is not None else default
 
-    def _int(self, *path: str, default: int) -> int:
-        """整型读取：显式 0 是合法值，仅在缺失/非法时用默认值。"""
-        v = self._g(*path, default=None)
+    def _i(self, key: str, default: int) -> int:
         try:
-            return int(v)
+            return int(self._c.get(key))
         except (TypeError, ValueError):
             return default
 
-    # ---- 接线 ----
+    # ---- life ----
     @property
-    def main_platform_id(self) -> str:
-        return str(self._g("wiring", "main_platform_id")).strip()
-
-    @property
-    def owner_id(self) -> str:
-        return str(self._g("wiring", "owner_id")).strip()
-
-    # ---- 导演 bot（插件自持，不经过 AstrBot 平台管理）----
-    @property
-    def director_token(self) -> str:
-        return str(self._g("director", "bot_token")).strip()
-
-    @property
-    def director_proxy(self) -> str:
-        return str(self._g("director", "proxy")).strip()
-
-    @property
-    def channel_id(self) -> str:
-        return str(self._g("wiring", "channel_id")).strip()
-
-    @property
-    def discussion_group_id(self) -> str:
-        return str(self._g("wiring", "discussion_group_id")).strip()
+    def enabled(self) -> bool:
+        return bool(self._c.get("life_enabled", True))
 
     @property
     def timezone(self) -> str:
-        return str(self._g("wiring", "timezone", default="Asia/Shanghai")).strip() or "Asia/Shanghai"
+        return self._s("life_timezone", "Asia/Shanghai") or "Asia/Shanghai"
 
-    # ---- 模型分工 ----
     @property
-    def chat_provider_id(self) -> str:
-        return str(self._g("models", "chat_provider_id")).strip()
+    def partner_id(self) -> str:
+        """恋人 user id：优先 life_partner_id，退化为控制台管理员。"""
+        pid = self._s("life_partner_id")
+        if pid:
+            return pid
+        admins = self._c.get("console_admins")
+        if isinstance(admins, list) and admins:
+            return str(admins[0]).strip()
+        return self._s("console_admins")
 
+    @property
+    def discussion_group_id(self) -> str:
+        return self._s("life_discussion_group_id")
+
+    @property
+    def heartbeat_minutes(self) -> int:
+        return max(1, self._i("life_heartbeat_minutes", 5))
+
+    # ---- life_models ----
     @property
     def light_provider_id(self) -> str:
-        return str(self._g("models", "light_provider_id")).strip()
-
-    @property
-    def vlm_provider_id(self) -> str:
-        return str(self._g("models", "vlm_provider_id")).strip()
+        return self._s("life_light_provider_id")
 
     @property
     def embedding_provider_id(self) -> str:
-        return str(self._g("models", "embedding_provider_id")).strip()
+        return self._s("life_embedding_provider_id")
 
     @property
     def tts_provider_id(self) -> str:
-        return str(self._g("models", "tts_provider_id")).strip()
+        return self._s("life_tts_provider_id")
 
     @property
     def stt_provider_id(self) -> str:
-        return str(self._g("models", "stt_provider_id")).strip()
+        return self._s("life_stt_provider_id")
 
-    # ---- 生图 ----
+    # ---- imagegen ----
     @property
     def imagegen_order(self) -> list[str]:
-        v = self._g("imagegen", "backend_order", default=[])
+        v = self._c.get("ig_backend_order", [])
         return [str(x).strip() for x in v if str(x).strip()] if isinstance(v, list) else []
 
     def imagegen_backend(self, name: str) -> dict:
-        v = self._g("imagegen", name, default={})
-        return v if isinstance(v, dict) else {}
+        c = self._c
+        if name == "nanobanana":
+            return {
+                "api_key": c.get("ig_nb_api_key", ""),
+                "base_url": c.get("ig_nb_base_url", ""),
+                "model": c.get("ig_nb_model", ""),
+            }
+        if name == "comfyui":
+            return {
+                "base_url": c.get("ig_comfy_base_url", ""),
+                "api_key": c.get("ig_comfy_api_key", ""),
+                "workflow_file": c.get("ig_comfy_workflow", "comfyui_workflow.json"),
+            }
+        if name == "novelai":
+            return {
+                "api_key": c.get("ig_nai_api_key", ""),
+                "model": c.get("ig_nai_model", ""),
+            }
+        return {}
 
-    # ---- 防打扰（A3 仅有的三个行为参数）----
-    @property
-    def min_gap_minutes(self) -> int:
-        return self._int("proactive", "min_gap_minutes", default=45)
-
-    @property
-    def max_silence_hours(self) -> int:
-        return self._int("proactive", "max_silence_hours", default=30)
-
-    @property
-    def max_unanswered(self) -> int:
-        return self._int("proactive", "max_unanswered", default=3)
-
-    # ---- 系统 ----
-    @property
-    def heartbeat_minutes(self) -> int:
-        return max(1, self._int("system", "heartbeat_minutes", default=5))
-
-    @property
-    def debug(self) -> bool:
-        return bool(self._g("system", "debug", default=False))
-
-    # ---- 校验 ----
-    def missing_required(self) -> list[str]:
-        missing = []
-        if not self.main_platform_id:
-            missing.append("wiring.main_platform_id（主 bot 平台实例 ID）")
-        if not self.owner_id:
-            missing.append("wiring.owner_id（主人 user id）")
-        return missing
+    def raw(self, key: str, default: Any = None) -> Any:
+        return self._c.get(key, default)

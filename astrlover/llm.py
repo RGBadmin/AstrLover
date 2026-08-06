@@ -37,13 +37,15 @@ class LLM:
             return None
 
     def chat_provider(self):
-        return self._by_id(self.cfg.chat_provider_id) or self._using()
+        """对话主模型 = 会话当前模型（管线模式下由 AstrBot 决定）。"""
+        return self._using()
 
     def light_provider(self):
-        return self._by_id(self.cfg.light_provider_id) or self.chat_provider()
+        return self._by_id(getattr(self.cfg, "light_provider_id", "")) or self.chat_provider()
 
     def vlm_provider(self):
-        return self._by_id(self.cfg.vlm_provider_id) or self.chat_provider()
+        """图片打标由 presence 层的独立视觉 API 负责；此处仅兜底。"""
+        return self.chat_provider()
 
     # ---- 调用 ----
     async def _call(

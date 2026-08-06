@@ -16,6 +16,7 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import Context, Star
 
+from .astrlover.app import App
 from .astrlover.presence.core import PresenceCore
 
 
@@ -23,14 +24,41 @@ class AstrLover(PresenceCore, Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context, config)  # PresenceCore.__init__ → Star.__init__
         self.config = config
+        self.app: App | None = None
 
     async def initialize(self):
         await PresenceCore.initialize(self)
         logger.info("[AstrLover] presence 层就绪。")
+        try:
+            # 生命模拟层：与 presence 共用同一份压平配置（self.conf）
+            self.app = App(star=self, context=self.context, flat_conf=self.conf)
+            await self.app.initialize()
+        except Exception:
+            logger.error("[AstrLover] 生命模拟层初始化失败（presence 功能不受影响）：", exc_info=True)
+            self.app = None
 
     async def terminate(self):
+        if self.app is not None:
+            await self.app.terminate()
+            self.app = None
         await PresenceCore.terminate(self)
         logger.info("[AstrLover] 已停止。")
+
+    # ==================================================================
+    # 生命模拟层钩子：她的"此刻"注入每一次 LLM 请求；
+    # 回复里的内部标记（编造固化/事件提及）在响应侧摘走。
+    # ==================================================================
+    @filter.on_llm_request(priority=-5)
+    async def inject_life(self, event: AstrMessageEvent, req: ProviderRequest):
+        """注入人格/记忆/生活状态/情绪/时间感知/未提及事件（生命模拟层）。"""
+        if self.app is not None:
+            await self.app.hook_llm_request(event, req)
+
+    @filter.on_llm_response(priority=-5)
+    async def capture_life_markers(self, event: AstrMessageEvent, resp):
+        """摘走 <improv>/<told>/<found> 内部标记并回流她的记忆（生命模拟层）。"""
+        if self.app is not None:
+            await self.app.hook_llm_response(event, resp)
 
     # ==================================================================
     # presence 层委托（实现体在 astrlover/presence/core.py，行为与

@@ -1,4 +1,19 @@
-from astrlover.chat.composer import parse_reply
+from astrlover.chat.composer import extract_internal, parse_reply
+
+
+def test_extract_internal_pipeline_mode():
+    raw = "嘿嘿我妈是老师嘛\n<improv>妈妈的职业是老师</improv>\n<told>5</told><found>9</found>"
+    clean, improvs, told, found = extract_internal(raw)
+    assert improvs == ["妈妈的职业是老师"]
+    assert told == [5] and found == [9]
+    assert "<improv>" not in clean and "<told>" not in clean
+    assert clean.startswith("嘿嘿我妈是老师嘛")
+
+
+def test_extract_internal_untouched():
+    raw = "普通回复，没有任何标记。"
+    clean, improvs, told, found = extract_internal(raw)
+    assert clean == raw and not improvs and not told and not found
 
 
 def test_plain_text_single_segment():

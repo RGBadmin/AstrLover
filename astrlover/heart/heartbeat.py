@@ -66,20 +66,14 @@ class Heartbeat:
         if now.weekday() == 6 and now.hour >= 21:
             await app.memory.write_weekly(app.clock.week_str())
 
-        # 5. 主动消息意愿
-        decision = await app.desire.evaluate()
-        if decision:
-            await app.planner.proactive_message(decision["reasons"])
+        # 5. 主动消息意愿（N3 与 presence 的倒计时机制合并后接回）
+        if app.desire and app.planner:
+            decision = await app.desire.evaluate()
+            if decision:
+                await app.planner.proactive_message(decision["reasons"])
 
-        # 6. 生活冲动：发动态/换头像/改签名（情境掷签）
+        # 6. 生活冲动：发动态/换头像/改签名（N3 改经 presence 执行后接回）
         if app.impulses:
             await app.impulses.maybe_fire()
 
-        # 7. 图库 pending 打标：每 tick 消化少量，摊平成本
-        if app.gallery:
-            await app.gallery.ingest.tag_pending(2)
-
-        # 8. 低频维护
         self._ticks += 1
-        if self._ticks % 12 == 1:
-            await app.refresh_capabilities()

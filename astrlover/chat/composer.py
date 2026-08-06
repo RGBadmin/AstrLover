@@ -89,6 +89,25 @@ def _parse_part(part: str, out: list[Segment]):
         out.append(Segment("text", tail))
 
 
+def extract_internal(text: str) -> tuple[str, list[str], list[int], list[int]]:
+    """只摘取内部记账标记（管线模式用）：返回 (清理后文本, 编造固化, told, found)。
+
+    与 parse_reply 不同：不做分段、不动其余内容，其他文本原样保留。
+    """
+    improvs = [m.group(1).strip() for m in _IMPROV.finditer(text) if m.group(1).strip()]
+    told: list[int] = []
+    found: list[int] = []
+    for m in _TOLD.finditer(text):
+        try:
+            eid = int(m.group(2))
+        except ValueError:
+            continue
+        (told if m.group(1).lower() == "told" else found).append(eid)
+    clean = _IMPROV.sub("", text)
+    clean = _TOLD.sub("", clean)
+    return clean.rstrip(), improvs, told, found
+
+
 def typing_delay(text: str) -> float:
     """模拟真人打字节奏：按长度粗估，带抖动。"""
     base = 0.8 + min(len(text), 80) / 16.0

@@ -67,7 +67,6 @@ class PanelApi:
             "stage": app.dynamic.stage(str(app.profile.relationship.get("stage", ""))),
             "signature": app.dynamic.signature,
             "avatar_desc": app.dynamic.avatar_desc,
-            "capabilities": sorted(app.capabilities()),
             "unanswered": await app.dao.kv_get("proactive_unanswered", 0) or 0,
             "last_user_minutes": int((time.time() - last_user) / 60) if last_user else None,
             "gallery_stats": stats,
@@ -139,6 +138,8 @@ class PanelApi:
         return json_response({"ok": True})
 
     async def run_action(self):
+        if self.app.actions is None:
+            return error_response("行为编排请在控制台 bot 使用（/say /act /moment /avatar /signature）")
         payload = await request.json(default={})
         kind = str(payload.get("kind") or "")
         if kind not in ("say", "voice", "post", "avatar", "signature"):
@@ -202,7 +203,14 @@ class PanelApi:
             return error_response("not found", status_code=404)
         return file_response(path, filename=path.name)
 
+    def _gallery_off(self):
+        if self.app.gallery is None:
+            return error_response("相册已由 presence 层接管：请用 /gallery 指令管理（扫描/索引/检索）")
+        return None
+
     async def gallery_upload(self):
+        if (err := self._gallery_off()) is not None:
+            return err
         files = await request.files()
         upload = files.get("file")
         if not isinstance(upload, PluginUploadFile):
@@ -217,10 +225,14 @@ class PanelApi:
         return json_response({"id": image_id, "file": rel})
 
     async def gallery_scan(self):
+        if (err := self._gallery_off()) is not None:
+            return err
         n = await self.app.gallery.ingest.scan_dir()
         return json_response({"added": n})
 
     async def gallery_tagall(self):
+        if (err := self._gallery_off()) is not None:
+            return err
         if self._tagall_task and not self._tagall_task.done():
             return json_response({"running": True})
         self._tagall_task = asyncio.create_task(self._tagall())
@@ -229,12 +241,13 @@ class PanelApi:
     async def _tagall(self):
         try:
             n = await self.app.gallery.ingest.tag_all()
-            await self.app.refresh_capabilities()
             logger.info(f"[AstrLover] 面板触发的全量打标完成：{n} 张。")
         except Exception:
             logger.error("[AstrLover] 全量打标异常：", exc_info=True)
 
     async def gallery_update(self):
+        if (err := self._gallery_off()) is not None:
+            return err
         payload = await request.json(default={})
         image_id = payload.get("id")
         op = str(payload.get("op") or "")

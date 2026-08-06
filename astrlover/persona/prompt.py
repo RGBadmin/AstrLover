@@ -28,6 +28,21 @@ _STYLE_RULES = """【聊天的样子】
 - 记得你们聊过的事，自然地延续话题；答应过的事要记得。"""
 
 
+def _pipeline_marker_block(has_events: bool) -> str:
+    """管线模式：回复形态交给 AstrBot 与工具，只保留内部记账标记。"""
+    lines = [
+        "【内部标记（发出去之前会被系统摘走，他看不到）】",
+        "- 如果你临场编了档案里没有的、关于你自己的新设定（家人职业、过去经历这类），"
+        "在回复最后单独一行写 <improv>一句话记下这个新设定</improv>，可以多行。",
+    ]
+    if has_events:
+        lines.append(
+            "- 下面「你最近做的事」里标了编号：你主动讲起某件事后，在回复最后加一行 "
+            "<told>编号</told>；如果是他自己发现后问起的，加 <found>编号</found>。"
+        )
+    return "\n".join(lines)
+
+
 def _protocol_block(capabilities: set[str], has_events: bool) -> str:
     lines = [
         "【消息格式】",
@@ -69,6 +84,7 @@ def build_system_prompt(
     events_text: str = "",
     capabilities: set[str] | None = None,
     extra_note: str = "",
+    pipeline: bool = False,
 ) -> str:
     capabilities = capabilities or set()
     stage = dynamic.stage(str(profile.relationship.get("stage", "热恋")))
@@ -114,7 +130,10 @@ def build_system_prompt(
 
     # 5 & 6. 硬约束 + 风格 + 协议
     sections.append(_STYLE_RULES)
-    sections.append(_protocol_block(capabilities, has_events=bool(events_text)))
+    if pipeline:
+        sections.append(_pipeline_marker_block(has_events=bool(events_text)))
+    else:
+        sections.append(_protocol_block(capabilities, has_events=bool(events_text)))
     sections.append(_HARD_RULES)
 
     if extra_note:
