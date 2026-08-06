@@ -12,7 +12,7 @@
 """
 
 from astrbot.api import AstrBotConfig, logger
-from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import Context, Star
 
@@ -370,3 +370,58 @@ class AstrLover(LifeConsoleMixin, PresenceCore, Star):
         async for _r in PresenceCore.cmd_vision(self, event, arg):
             yield _r
 
+
+    # ==================================================================
+    # 生命层工具与评论区（生图 / 语音 / 互动闭环）
+    # ==================================================================
+    @filter.llm_tool(name="generate_photo")
+    async def generate_photo(self, event: AstrMessageEvent, situation: str, caption: str = "", **_extra):
+        """相册里翻不到合适的照片时，现场"拍"一张发给他。先用 browse_gallery 找，实在没有贴切的再用这个——他点名要的场景相册里没有（比如"现在去阳台拍一张"而相册里没有阳台的），或者要拍此刻正在做的事。画面必须符合你此刻的生活状态和你的长相打扮。
+
+        Args:
+            situation(string): 画面描述：场景、你在做什么、穿着、情绪、构图（自拍视角/半身等）
+            caption(string): 可选，跟照片一起说的一句话
+        """
+        app = self.app
+        if app is None or not app.ready or app.imagegen is None or not app.imagegen.available:
+            return "拍不了（生图后端没配置），用 browse_gallery 在相册里找一张吧。"
+        path = await app.imagegen.generate(situation)
+        if not path:
+            return "没拍成（生成失败了），用 browse_gallery 在相册里找一张类似的吧。"
+        chain = MessageChain()
+        if caption:
+            chain.message(caption)
+        chain.file_image(path)
+        await event.send(chain)
+        await app.dao.add_event("photo_gen", f"现拍了一张照片给他：{situation[:50]}", motivation="")
+        return "照片已经发出去了。照常继续说你的话，别把发照片当成一次汇报。"
+
+    @filter.llm_tool(name="send_voice")
+    async def send_voice(self, event: AstrMessageEvent, text: str, **_extra):
+        """把一段话用你的声音以语音条发出去。撒娇、道晚安、长长的心里话、哄他睡觉这种时刻才用，平时打字就好，别滥用。
+
+        Args:
+            text(string): 要说出口的话，口语、自然，像对着手机说话（一般 80 字以内）
+        """
+        app = self.app
+        if app is None or not app.ready or app.voice is None or not app.voice.tts_ready:
+            return "语音发不了（TTS 未配置），把这段话用文字说出来吧。"
+        record = await app.voice.tts_record(text)
+        if record is None:
+            return "语音生成失败了，把这段话用文字说出来吧。"
+        await event.send(MessageChain(chain=[record]))
+        return "语音已发出。照常继续，不用复述语音内容。"
+
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=100)
+    async def watch_channel_comments(self, event: AstrMessageEvent):
+        """频道讨论组的评论互动闭环（生命层）。"""
+        app = self.app
+        if app is None or not app.ready or app.channel_hub is None:
+            return
+        if event.is_private_chat():
+            return
+        try:
+            if await app.channel_hub.on_group_message(event):
+                event.stop_event()
+        except Exception:
+            logger.error("[AstrLover] 评论区处理异常：", exc_info=True)

@@ -61,23 +61,36 @@ class ImageGen:
         return bool(self.backends)
 
     async def generate(self, situation: str) -> str | None:
-        """按情境需求生成"照片"，保存到图库目录，返回文件路径。"""
+        """按情境需求生成"照片"，保存后返回文件路径。
+
+        外观锚点图放 data/plugin_data/astrlover/persona/anchors/ 下
+        （挑几张最能代表她长相的照片，NanoBanana 以此保证同一个人）。
+        产物落到 presence 相册目录（若已配置）的 aiimages/ 子目录，
+        之后 /gallery scan + index 即回流成她相册的一部分。
+        """
         if not self.backends:
             return None
         app = self.app
-        anchor_paths = []
-        for row in await app.dao.anchors():
-            p = app.data_dir / row["file"]
-            if p.exists():
-                anchor_paths.append(str(p))
+        anchors_dir = app.persona_dir / "anchors"
+        anchor_paths = [
+            str(p) for p in sorted(anchors_dir.glob("*"))
+            if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
+        ][:2] if anchors_dir.exists() else []
         spec = build_spec(app.profile, app.dynamic, situation, anchor_paths)
+
+        # 优先落到 presence 相册目录，回流后可被她自己检索到
+        presence_dir = str(self.app.star.conf.get("gallery_dir") or "").strip() if hasattr(self.app.star, "conf") else ""
+        if presence_dir and Path(presence_dir).is_dir():
+            out_root = Path(presence_dir) / "aiimages"
+        else:
+            out_root = app.gallery_dir / "gen"
 
         for backend in self.backends:
             try:
                 data = await backend.generate(spec)
                 if not data:
                     continue
-                out_dir = app.gallery_dir / "gen" / time.strftime("%Y%m")
+                out_dir = out_root / time.strftime("%Y%m")
                 out_dir.mkdir(parents=True, exist_ok=True)
                 out = out_dir / f"{uuid.uuid4().hex}.png"
                 out.write_bytes(data)

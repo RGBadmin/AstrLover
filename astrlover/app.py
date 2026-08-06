@@ -20,6 +20,9 @@ except ImportError:
 from .actions import ActionExecutor
 from .chat.composer import extract_internal
 from .config import Cfg
+from .imagegen.base import ImageGen
+from .tg.channel import ChannelHub
+from .voice.service import VoiceService
 from .heart.desire import Desire
 from .heart.heartbeat import Heartbeat
 from .heart.impulses import Impulses
@@ -120,6 +123,10 @@ class App:
         self.impulses = Impulses(self)
         self.actions = ActionExecutor(self)
         self.heart = Heartbeat(self)
+
+        self.imagegen = ImageGen(self)
+        self.voice = VoiceService(self)
+        self.channel_hub = ChannelHub(self)
 
         self.panel = PanelApi(self)
         self.panel.register()
