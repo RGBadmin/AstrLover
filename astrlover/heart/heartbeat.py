@@ -66,13 +66,23 @@ class Heartbeat:
         if now.weekday() == 6 and now.hour >= 21:
             await app.memory.write_weekly(app.clock.week_str())
 
-        # 5. 主动消息意愿（N3 与 presence 的倒计时机制合并后接回）
-        if app.desire and app.planner:
+        # 5. 主动消息意愿：过阈值 → 走 presence 的导演生成+投递+写回通道
+        if app.desire:
             decision = await app.desire.evaluate()
             if decision:
-                await app.planner.proactive_message(decision["reasons"])
+                from .desire import reason_cn
 
-        # 6. 生活冲动：发动态/换头像/改签名（N3 改经 presence 执行后接回）
+                readable = "；".join(reason_cn(r) for r in decision["reasons"])
+                extra = (
+                    f"\n这次你想主动找他的具体缘由：{readable}。"
+                    "自然地体现在话里，不要报菜名式罗列。"
+                )
+                result = await app.star._proactive_fire(extra_brief=extra)
+                for r in decision["reasons"]:
+                    await app.desire.mark(r)
+                logger.info(f"[AstrLover] 意愿触发主动消息：{readable} → {result[:60]}")
+
+        # 6. 生活冲动：发动态/换头像/改签名（经 presence 控制台通道）
         if app.impulses:
             await app.impulses.maybe_fire()
 

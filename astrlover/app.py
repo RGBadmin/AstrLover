@@ -17,9 +17,12 @@ try:
 except ImportError:
     from astrbot.core.star.star_tools import StarTools
 
+from .actions import ActionExecutor
 from .chat.composer import extract_internal
 from .config import Cfg
+from .heart.desire import Desire
 from .heart.heartbeat import Heartbeat
+from .heart.impulses import Impulses
 from .life.clock import Clock
 from .life.engine import LifeEngine
 from .life.mood import MoodEngine
@@ -113,6 +116,9 @@ class App:
         self.memory = MemoryPipeline(self)
         self.life = LifeEngine(self)
         self.mood = MoodEngine(self.dao)
+        self.desire = Desire(self)
+        self.impulses = Impulses(self)
+        self.actions = ActionExecutor(self)
         self.heart = Heartbeat(self)
 
         self.panel = PanelApi(self)
@@ -153,6 +159,12 @@ class App:
                     await self.working.log_user(text)
                     await self.mood.on_user_message(text)
                 await self.dao.kv_set("last_user_ts", int(time.time()))
+                # 他回话了：presence 的"连续未回"计数清零
+                # （其 note_user_activity 只在自带倒计时开启时处理）
+                st = self.star.state.setdefault("proactive", {})
+                if st.get("unanswered"):
+                    st["unanswered"] = 0
+                    self.star._save_state()
 
             query = (event.message_str or "").strip() or "聊天"
             extra = "" if is_partner else (

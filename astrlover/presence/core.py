@@ -6093,11 +6093,15 @@ class PresenceCore:
             )
         return brief
 
-    async def _proactive_fire(self) -> str:
-        """生成并发出一条主动消息。返回结果说明，给指令回显用。"""
+    async def _proactive_fire(self, extra_brief: str = "") -> str:
+        """生成并发出一条主动消息。返回结果说明，给指令回显用。
+
+        extra_brief：生命层意愿引擎传入的"这次想找他的具体缘由"，
+        追加在标准 brief 之后（合并版扩展，原行为不变）。
+        """
         st = self.state.setdefault("proactive", {})
         try:
-            text = await self._director_generate(self._proactive_brief())
+            text = await self._director_generate(self._proactive_brief() + extra_brief)
         except Exception as e:
             logger.error(f"[tg_presence] 主动消息生成失败：{e}", exc_info=True)
             st["due"] = time.time() + 1800  # 半小时后再试，别把这次倒计时白扔

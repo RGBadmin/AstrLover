@@ -17,10 +17,14 @@ from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import Context, Star
 
 from .astrlover.app import App
+from .astrlover.console_ext import LifeConsoleMixin, register_console_routes
 from .astrlover.presence.core import PresenceCore
 
+# 生命层控制台指令（/status /diary /events /plan /plans）并入 presence 路由表
+register_console_routes()
 
-class AstrLover(PresenceCore, Star):
+
+class AstrLover(LifeConsoleMixin, PresenceCore, Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context, config)  # PresenceCore.__init__ → Star.__init__
         self.config = config

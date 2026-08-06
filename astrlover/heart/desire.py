@@ -1,7 +1,9 @@
 """A3 主动消息的意愿计算：时机由"想不想"决定，不是定时器。
 
-纯代码打分，零 token；只有过阈值才轮到轻/主模型出场。
-防打扰三参数（也是仅有的三个行为配置）在这里生效。
+纯代码打分，零 token；过阈值后由心跳调用 presence 的 _proactive_fire
+（同一条导演生成+投递+写回历史的通道）。
+门槛与 presence 共用：静默时段、连发未回上限、绑定目标；
+presence 自带的随机倒计时（proactive_enable）开启时本引擎自动让位。
 """
 
 import random
@@ -39,21 +41,28 @@ class Desire:
 
     async def evaluate(self) -> dict | None:
         app = self.app
-        cfg = app.cfg
+        star = app.star
         now = time.time()
 
-        if not await app.linked_umo():
-            return None  # 还从没聊过，无处可发
+        if not app.cfg.proactive_enabled:
+            return None
+        if star.conf.get("proactive_enable", False):
+            return None  # presence 的随机倒计时开着，让位，避免双重开火
+        if not (star.state.get("director_target") or "").strip():
+            return None  # 没绑定会话，无处可发
+        if star._in_quiet():
+            return None  # 静默时段
 
         # --- 硬门槛 ---
-        unanswered = await app.dao.kv_get("proactive_unanswered", 0) or 0
-        if unanswered >= cfg.max_unanswered:
-            return None  # 连发未回，先停下等他（A3）
+        st = star.state.get("proactive") or {}
+        cap = int(star.conf.get("proactive_max_unanswered", 3) or 0)
+        if cap > 0 and int(st.get("unanswered", 0) or 0) >= cap:
+            return None  # 连发未回，先停下等他
         last_user = await app.dao.kv_get("last_user_ts", 0) or 0
-        if (now - last_user) / 60 < cfg.min_gap_minutes:
+        if (now - last_user) / 60 < app.cfg.proactive_min_gap_minutes:
             return None
         last_any = await app.dao.last_chat_ts()
-        if (now - last_any) / 60 < cfg.min_gap_minutes:
+        if (now - last_any) / 60 < app.cfg.proactive_min_gap_minutes:
             return None
 
         sleeping = app.life.sleeping_now() if app.life else False
@@ -75,8 +84,8 @@ class Desire:
             reasons.append("meal")
 
         # --- 沉默压力 ---
-        silence_h = (now - last_any) / 3600
-        max_h = max(1, cfg.max_silence_hours)
+        silence_h = (now - last_any) / 3600 if last_any else 0.0
+        max_h = max(1, app.cfg.max_silence_hours)
         score += min(0.6, 0.6 * silence_h / max_h)
         force = silence_h >= max_h
         if silence_h > max_h * 0.5:

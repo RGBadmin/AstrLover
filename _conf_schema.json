@@ -726,6 +726,24 @@
         "type": "int",
         "default": 5,
         "hint": "生命活动推进频率，纯代码不耗 token。"
+      },
+      "life_proactive": {
+        "description": "生命层意愿式主动消息",
+        "type": "bool",
+        "default": true,
+        "hint": "由作息/纪念日/想炫耀/想念驱动的主动消息。presence 那组的「主动消息」随机倒计时开启时，本引擎自动让位避免双发。"
+      },
+      "life_proactive_min_gap_minutes": {
+        "description": "主动消息最小间隔（分钟）",
+        "type": "int",
+        "default": 45,
+        "hint": "你最后一条消息后至少隔多久她才会主动来找你。"
+      },
+      "life_max_silence_hours": {
+        "description": "最大沉默时限（小时）",
+        "type": "int",
+        "default": 30,
+        "hint": "最长多少小时没聊天，她一定会来找你。"
       }
     }
   },

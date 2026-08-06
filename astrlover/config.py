@@ -49,6 +49,18 @@ class Cfg:
     def heartbeat_minutes(self) -> int:
         return max(1, self._i("life_heartbeat_minutes", 5))
 
+    @property
+    def proactive_enabled(self) -> bool:
+        return bool(self._c.get("life_proactive", True))
+
+    @property
+    def proactive_min_gap_minutes(self) -> int:
+        return self._i("life_proactive_min_gap_minutes", 45)
+
+    @property
+    def max_silence_hours(self) -> int:
+        return max(1, self._i("life_max_silence_hours", 30))
+
     # ---- life_models ----
     @property
     def light_provider_id(self) -> str:
