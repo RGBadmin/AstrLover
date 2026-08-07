@@ -54,10 +54,6 @@ class Cfg:
     def tts_provider_id(self) -> str:
         return self._s("life_tts_provider_id")
 
-    @property
-    def stt_provider_id(self) -> str:
-        return ""  # STT 由 AstrBot 主管线负责，本插件不参与
-
     # ---- 主动消息 ----
     @property
     def proactive_enabled(self) -> bool:

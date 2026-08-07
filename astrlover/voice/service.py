@@ -3,7 +3,7 @@
 - TTS 经 AstrBot Provider 体系（GPT-SoVITS/CosyVoice/Fish Audio…可替换不锁定）；
 - Telegram 语音条要求 ogg/opus：用 ffmpeg 转码（官方镜像自带）；
   没有 ffmpeg 时退回原始音频文件并告警（会显示为文件而非波形条）；
-- STT 同理走 Provider；失败返回 None，由对话层自然圆场（"没听清"）。
+- 听你的语音由 AstrBot 主管线负责（配 STT Provider 即可），插件不掺和。
 """
 
 import asyncio
@@ -28,15 +28,6 @@ class VoiceService:
     # ------------------------------------------------------------------
     def _tts_provider(self):
         cfg_id = self.app.cfg.tts_provider_id
-        if not cfg_id:
-            return None
-        try:
-            return self.app.context.get_provider_by_id(cfg_id)
-        except Exception:
-            return None
-
-    def _stt_provider(self):
-        cfg_id = self.app.cfg.stt_provider_id
         if not cfg_id:
             return None
         try:
@@ -84,37 +75,6 @@ class VoiceService:
             return src
         return str(out)
 
-    # ------------------------------------------------------------------
-    # STT
-    # ------------------------------------------------------------------
-    async def transcribe(self, record: "Comp.Record") -> str | None:
-        provider = self._stt_provider()
-        if provider is None:
-            return None
-        source = (
-            getattr(record, "path", None)
-            or getattr(record, "file", None)
-            or getattr(record, "url", None)
-        )
-        if not source:
-            return None
-        try:
-            # 本地 ogg 先转 wav，提高各家 STT 兼容性
-            if self.ffmpeg and isinstance(source, str) and Path(source).exists() and not source.lower().endswith(".wav"):
-                wav = self.app.voice_dir / f"{uuid.uuid4().hex}.wav"
-                proc = await asyncio.create_subprocess_exec(
-                    self.ffmpeg, "-y", "-i", source, "-ar", "16000", "-ac", "1", str(wav),
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                )
-                await asyncio.wait_for(proc.wait(), timeout=60)
-                if proc.returncode == 0 and wav.exists():
-                    source = str(wav)
-            text = await provider.get_text(source)
-            return text.strip() if text else None
-        except Exception as e:
-            logger.warning(f"[AstrLover] STT 失败：{e}")
-            return None
 
     # ------------------------------------------------------------------
     def _cleanup(self, keep_days: int = 7):

@@ -9,6 +9,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
+try:
+    from fastapi.encoders import jsonable_encoder as _jsonable
+except ImportError:  # 没装 fastapi 就退回更严格的 json.dumps
+    import json as _json
+
+    def _jsonable(data):
+        return _json.dumps(data, ensure_ascii=False)
+
+
 def _install_astrbot_stub():
     if "astrbot" in sys.modules:
         return
@@ -73,8 +82,16 @@ def _install_astrbot_stub():
 
     web = types.ModuleType("astrbot.api.web")
     web.request = types.SimpleNamespace(json=None, query=None)
-    web.json_response = lambda data, **_k: data
-    web.error_response = lambda msg, **_k: {"error": msg}
+
+    def _json_response(data=None, **_k):
+        # 真实的 json_response 会过 fastapi 的 jsonable_encoder，
+        # 塞不进 JSON 的对象在那里炸 → 面板只显示一句 Internal server error。
+        # 桩必须同样严格，否则这类 bug 测不出来。
+        _jsonable(data)
+        return data
+
+    web.json_response = _json_response
+    web.error_response = lambda msg, **_k: {"status": "error", "message": msg}
     web.file_response = lambda path, **_k: {"file": str(path)}
     web.PluginUploadFile = object
 

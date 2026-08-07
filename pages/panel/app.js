@@ -26,11 +26,26 @@ function ts(sec) {
   return new Date(sec * 1000).toLocaleString("zh-CN", { hour12: false });
 }
 
+// 出错时把原因摊在页面上——一闪而过的 toast 看不清，
+// 而后端已经把异常类型和调用栈尾巴带回来了
+function showError(where, e) {
+  const msg = (e && e.message) || String(e);
+  view.replaceChildren(
+    el("div", { class: "card wide" }, [
+      el("h3", {}, `${where} 打不开`),
+      el("pre", { style: "white-space:pre-wrap;margin:0;line-height:1.6" }, msg),
+      el("div", { class: "meta", style: "margin-top:8px" },
+        "完整堆栈在 AstrBot 日志里搜 [AstrLover]。"),
+      el("button", { class: "ghost", style: "margin-top:8px", onclick: () => location.reload() }, "重试"),
+    ]),
+  );
+}
+
 async function call(fn) {
   try {
     return await fn();
   } catch (e) {
-    toast("出错：" + e.message);
+    toast("出错：" + ((e && e.message) || e));
     throw e;
   }
 }
@@ -47,7 +62,8 @@ async function renderOverview() {
     el("div", { class: "cards" }, [
       el("div", { class: "card" }, [
         el("h3", {}, "她"),
-        el("div", { class: "big" }, `${d.name || "未初始化"}\n${d.now || ""}`),
+        el("div", { class: "big" },
+          `人设：${d.persona_ok ? "已读到（在 AstrBot 人格设定里）" : "没读到——先绑定对话并给它设人格"}\n${d.now || ""}`),
       ]),
       el("div", { class: "card" }, [
         el("h3", {}, "此刻"),
@@ -78,7 +94,7 @@ async function renderOverview() {
           class: "ghost",
           onclick: async () => {
             toast("正在打包…");
-            await call(() => bridge.download("export", { gallery: 1 }));
+            await call(() => bridge.download("export"));
           },
         }, "导出生命参数与记忆包"),
       ]),
@@ -289,8 +305,16 @@ document.getElementById("tabs").addEventListener("click", async (e) => {
   if (!btn) return;
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b === btn));
   view.textContent = "加载中…";
-  await routes[btn.dataset.tab]();
+  try {
+    await routes[btn.dataset.tab]();
+  } catch (err) {
+    showError(btn.textContent, err);
+  }
 });
 
 await bridge.ready();
-await renderOverview();
+try {
+  await renderOverview();
+} catch (err) {
+  showError("总览", err);
+}

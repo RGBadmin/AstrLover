@@ -113,13 +113,6 @@ class AlbumStore:
             (int(time.time()), image_id),
         )
 
-    async def count_like(self, word: str) -> int:
-        """词面 DF：desc 里含该词的图片数（IDF 权重用）。"""
-        row = await self.db.fetchone(
-            "SELECT COUNT(*) AS n FROM album_images WHERE status='ok' AND desc LIKE ?",
-            (f"%{word}%",),
-        )
-        return int(row["n"]) if row else 0
 
     async def ids_like(self, word: str) -> set[int]:
         rows = await self.db.fetchall(

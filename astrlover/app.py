@@ -20,7 +20,7 @@ except ImportError:
 
 from .actions import ActionExecutor
 from .album.service import Album
-from .chat.composer import extract_internal
+from .markers import extract_internal
 from .config import Cfg
 from .director.bot import DirectorBot
 from .director.bridge import DirectorBridge

@@ -54,8 +54,6 @@ class Dao:
             "SELECT * FROM facts WHERE status=? ORDER BY updated_ts DESC LIMIT ?", (status, limit)
         )
 
-    async def get_fact(self, fact_id: int) -> dict | None:
-        return await self.db.fetchone("SELECT * FROM facts WHERE id=?", (fact_id,))
 
     # ================= diary =================
     async def save_diary(self, date: str, content: str, mood: str = "", dtype: str = "daily", vec_id: str = "") -> int:
@@ -105,11 +103,6 @@ class Dao:
     async def set_event_mention(self, event_id: int, status: str):
         await self.db.execute("UPDATE events SET mention_status=? WHERE id=?", (status, event_id))
 
-    async def latest_event(self, kind: str) -> dict | None:
-        row = await self.db.fetchone(
-            "SELECT * FROM events WHERE kind=? ORDER BY ts DESC LIMIT 1", (kind,)
-        )
-        return _load_meta(row, "meta") if row else None
 
     # ================= schedule =================
     async def replace_day_schedule(self, date: str, items: list[dict]):

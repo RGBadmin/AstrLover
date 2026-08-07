@@ -35,11 +35,13 @@ class _FakeConvManager:
 class _FakeContext:
     def __init__(self):
         self.web_apis = []
+        self.registered_web_apis = []     # 路由表：面板端点测试按它逐个调用
         self.history = []
         self.conversation_manager = _FakeConvManager(self)
 
     def register_web_api(self, route, handler, methods, desc):
         self.web_apis.append(route)
+        self.registered_web_apis.append((route, handler))
 
     def get_provider_by_id(self, _pid):
         return None

@@ -54,8 +54,8 @@ astrlover/
 ├── imagegen/            三后端 + 提示词构建（锚点图保一致性）
 ├── voice/               TTS → ogg 语音条
 ├── panel/ + pages/panel Web 面板（Plugin Pages + register_web_api）
-├── store/               db（单库 schema）· dao · vectors（memory + album 两库）· export
-└── security.py          外部输入包裹防注入
+├── markers.py           从她的回复里剥内部标记（improv / told / found）
+└── store/               db（单库 schema）· dao · vectors（memory + album 两库）· export
 ```
 
 ## 三、关键决策

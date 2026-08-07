@@ -74,9 +74,6 @@ class Clock:
     def weekday_cn(self) -> str:
         return _WEEK_CN[self.now().weekday()]
 
-    def is_weekend(self) -> bool:
-        return self.now().weekday() >= 5
-
     def time_slot(self) -> str:
         h = self.now().hour
         if h < 5:
