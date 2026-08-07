@@ -176,7 +176,7 @@ class DirectorBridge:
                 logger.debug(f"[AstrLover] 生命层上下文拼接失败：{e}")
 
         act = DEFAULT_ACT if instruct is None else instruct
-        tail = str(app.star_conf.get("director_tail") or "").strip() or DEFAULT_TAIL
+        tail = DEFAULT_TAIL
         prompt = "\n".join(x for x in (act, brief, tail) if x)
 
         provider_id = await app.context.get_current_chat_provider_id(target)

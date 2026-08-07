@@ -361,7 +361,7 @@ class VisionClient:
         payload = self._payload(cfg, mime, b64)
 
         self.stats.calls += 1
-        timeout = aiohttp.ClientTimeout(total=int(self._conf.get("vision_timeout", VISION_TIMEOUT) or VISION_TIMEOUT))
+        timeout = aiohttp.ClientTimeout(total=VISION_TIMEOUT)
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(self._url(cfg), json=payload, headers=self._headers(cfg)) as resp:
