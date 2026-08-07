@@ -44,6 +44,9 @@ class DirectorBridge:
     # ------------------------------------------------------------------
     async def append_assistant(self, umo: str, text: str) -> bool:
         """把她说的话写进对话历史。"""
+        return await self._append(umo, "assistant", text)
+
+    async def _append(self, umo: str, role: str, text: str) -> bool:
         app = self.app
         try:
             cm = app.context.conversation_manager
@@ -62,15 +65,21 @@ class DirectorBridge:
             if not isinstance(history, list):
                 history = []
             body = text
-            if app.conf.get("stamp_own_messages", True):
+            # 时间戳只给她自己的消息打——他的消息 AstrBot 本来就带时间
+            if role == "assistant" and app.conf.get("stamp_own_messages", True):
                 tz = app.clock.tz if app.clock else None
                 body = f"{datetime.now(tz).strftime(STAMP_FMT)} {text}"
-            history.append({"role": "assistant", "content": body})
+            history.append({"role": role, "content": body})
             await cm.update_conversation(umo, cid, history=history)
             return True
         except Exception as e:
             logger.error(f"[AstrLover] 写历史失败：{e}")
             return False
+
+    async def append_user(self, umo: str, text: str) -> bool:
+        """静默期专用：AstrBot 在调 LLM 那步顺手写历史，禁掉 LLM 就没人写了。
+        自己补一笔，否则那段时间你说的话她事后完全不知道。"""
+        return await self._append(umo, "user", text)
 
     async def deliver(self, text: str) -> str:
         """以角色身份把一段话发到目标会话，并记进她的历史。"""
@@ -90,10 +99,7 @@ class DirectorBridge:
         if not found:
             return f"找不到目标平台 {self.umo_platform(target)}，那个 bot 还连着吗？"
 
-        wrote = await self.append_assistant(target, text)
-        # 说出去的话也进她的记忆素材（日记会用到）
-        if self.app.working:
-            await self.app.working.log_her(text)
+        wrote = await self.append_assistant(target, text)   # 写回历史 = 进记忆素材
         head = f"已发到 {self.umo_platform(target)}：\n{text}"
         if wrote:
             return head

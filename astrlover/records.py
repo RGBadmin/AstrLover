@@ -35,7 +35,6 @@ STATES = {
 
 # 保留时长（天）。0 = 永不自动清理
 KEEP_DAYS = {
-    "chat_log": 30,      # 素材，日记写完就没用了
     "events": 30,
     "schedule": 7,
     "plans": 7,          # 完成/取消后
@@ -166,6 +165,125 @@ class Records:
             for r in rows[:limit]
         )
 
+    # ------------------------------------------------------------------ 结构化（面板用）
+    KINDS = (
+        ("f", "事实"), ("d", "日记"), ("e", "事件"), ("s", "日程"),
+        ("m", "纪念日"), ("p", "排期"), ("o", "情绪"), ("state", "状态"),
+    )
+
+    async def rows(self, kind: str, limit: int = 50) -> list[dict]:
+        """每条一行，面板据此渲染成可单独编辑/删除的卡片。
+
+        chips 是标签、body 是可改的正文、meta 是不可改的附注；
+        editable/deletable 决定卡片上出现哪些按钮。
+        """
+        k = (kind or "f").strip().lower()
+        db = self.app.db
+        if k == "f":
+            rs = await db.fetchall("SELECT * FROM facts ORDER BY status, updated_ts DESC LIMIT ?", (limit,))
+            return [{
+                "rid": f"f{r['id']}",
+                "chips": [r["subject"]] + ([r["category"]] if r["category"] else [])
+                         + (["已失效"] if r["status"] != "active" else []),
+                "body": r["content"],
+                "meta": f"{_when(r['updated_ts'])} · 来自{_source_cn(r['source'])}",
+                "editable": True, "deletable": True,
+            } for r in rs]
+        if k == "d":
+            rs = await db.fetchall("SELECT * FROM diary ORDER BY date DESC LIMIT ?", (limit,))
+            return [{
+                "rid": f"d{r['id']}",
+                "chips": [r["date"]] + (["周记"] if r["type"] == "weekly" else []),
+                "body": r["content"], "meta": r["mood"] or "",
+                "editable": True, "deletable": True, "multiline": True,
+            } for r in rs]
+        if k == "e":
+            rs = await db.fetchall("SELECT * FROM events ORDER BY ts DESC LIMIT ?", (limit,))
+            mention = {"unmentioned": "还没跟他提", "told": "已讲过", "discovered": "被他发现"}
+            return [{
+                "rid": f"e{r['id']}",
+                "chips": [r["kind"], mention.get(r["mention_status"], "")],
+                "body": r["description"],
+                "meta": _when(r["ts"]) + (f" · 动机：{r['motivation']}" if r["motivation"] else ""),
+                "editable": True, "deletable": True,
+            } for r in rs]
+        if k == "s":
+            rs = await db.fetchall(
+                "SELECT * FROM schedule WHERE date >= ? ORDER BY date, start_hm LIMIT ?",
+                (self.app.clock.today_str(), limit))
+            return [{
+                "rid": f"s{r['id']}",
+                "chips": [r["date"], r["start_hm"] + (f"~{r['end_hm']}" if r["kind"] == "activity" else ""),
+                          r["status"]],
+                "body": r["activity"], "meta": r["notes"] or "",
+                "editable": True, "deletable": True,
+            } for r in rs]
+        if k == "m":
+            rs = await db.fetchall("SELECT * FROM milestones ORDER BY date LIMIT ?", (limit,))
+            kc = {"anniversary": "每年", "since": "算天数", "once": "一次性"}
+            return [{
+                "rid": f"m{r['id']}",
+                "chips": [r["date"], kc.get(r["kind"], r["kind"])],
+                "body": r["title"],
+                "meta": "她自己记的" if r["source"] == "self" else "你加的",
+                "editable": True, "deletable": True,
+            } for r in rs]
+        if k == "p":
+            rs = await self.app.dao.pending_list(limit)
+            return [{
+                "rid": f"p{r['id']}",
+                "chips": [datetime.fromtimestamp(r["due_ts"]).strftime("%m-%d %H:%M")],
+                "body": str(r["payload"].get("cmd", r["kind"])),
+                "meta": "到点由心跳执行",
+                "editable": False, "deletable": True,
+            } for r in rs]
+        if k == "o":
+            rs = await self.app.mood.current() if self.app.mood else []
+            return [{
+                "rid": f"o{r['id']}",
+                "chips": [r["kind"], f"强度 {r['decayed']:.2f}"],
+                "body": r["cause"] or "（没说原因）",
+                "meta": "会自己消散",
+                "editable": False, "deletable": True,
+            } for r in rs[:limit]]
+        if k == "state":
+            out = []
+            for key, label in STATES.items():
+                out.append({
+                    "rid": f"state:{key}", "chips": [label],
+                    "body": await self.get_state(key), "meta": "只有一份，被新值覆盖",
+                    "editable": True, "deletable": False,
+                    "multiline": key == "appearance",
+                })
+            sheet = await self.app.dao.latest_cheatsheet()
+            out.append({
+                "rid": "state:cheatsheet",
+                "chips": [f"核心小抄 v{sheet['version'] if sheet else 0}"],
+                "body": sheet["content"] if sheet else "",
+                "meta": "她自己修订；你改了她下次会在这个基础上继续写",
+                "editable": True, "deletable": False, "multiline": True,
+            })
+            return out
+        return []
+
+    async def mutate(self, op: str, rid: str = "", kind: str = "", text: str = "") -> str:
+        """面板统一入口：add / edit / del。"""
+        if op == "add":
+            return await self.add(kind, text)
+        if op == "edit":
+            if rid.startswith("state:"):
+                return await self._set_state_row(rid[6:], text)
+            return await self.edit(rid, text)
+        if op == "del":
+            return await self.delete(rid)
+        return "op 必须是 add / edit / del"
+
+    async def _set_state_row(self, key: str, text: str) -> str:
+        if key == "cheatsheet":
+            await self.app.dao.save_cheatsheet(text.strip(), reason="你手动改的")
+            return "小抄已更新"
+        return await self.set_state_cmd(key, text)
+
     # ------------------------------------------------------------------ 写
     async def add(self, kind: str, text: str) -> str:
         kind = (kind or "").strip().lower()
@@ -283,8 +401,6 @@ class Records:
             if n:
                 gone[name] = n
 
-        await purge("对话素材", "DELETE FROM chat_log WHERE ts < ?",
-                    (now - KEEP_DAYS["chat_log"] * 86400,))
         # 事件：讲过或被发现的旧事件才清；还没提过的留着（她还等着说呢）
         await purge("事件", "DELETE FROM events WHERE ts < ? AND mention_status != 'unmentioned'",
                     (now - KEEP_DAYS["events"] * 86400,))
@@ -309,3 +425,15 @@ class Records:
         if not m:
             return None
         return m.group(1).lower(), int(m.group(2))
+
+
+def _when(ts) -> str:
+    try:
+        return datetime.fromtimestamp(int(ts)).strftime("%m-%d %H:%M")
+    except (TypeError, ValueError, OSError):
+        return ""
+
+
+def _source_cn(src: str) -> str:
+    return {"chat": "对话", "improvise": "她临场编的", "user": "你手动加的",
+            "director": "控制台", "init": "初始"}.get(str(src), str(src) or "未知")

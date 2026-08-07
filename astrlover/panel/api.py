@@ -9,10 +9,10 @@ import time
 from astrbot.api import logger
 from astrbot.api.web import error_response, file_response, json_response, request
 
+from ..records import Records
 from ..settings import GROUPS
 
 P = "astrlover"
-
 
 class PanelApi:
     def __init__(self, app):
@@ -22,14 +22,8 @@ class PanelApi:
         reg = self.app.context.register_web_api
         reg(f"/{P}/overview", self.overview, ["GET"], "运行总览")
         reg(f"/{P}/records", self.records_list, ["GET"], "列出记录")
+        reg(f"/{P}/records/kinds", self.records_kinds, ["GET"], "记录类型")
         reg(f"/{P}/records/mutate", self.records_mutate, ["POST"], "增删改记录")
-        reg(f"/{P}/diaries", self.diaries, ["GET"], "日记列表")
-        reg(f"/{P}/facts", self.facts, ["GET"], "事实记忆")
-        reg(f"/{P}/cheatsheet", self.cheatsheet, ["GET"], "核心小抄")
-        reg(f"/{P}/chatlog", self.chatlog, ["GET"], "对话素材")
-        reg(f"/{P}/events", self.events, ["GET"], "生活事件流")
-        reg(f"/{P}/pending", self.pending, ["GET"], "排期队列")
-        reg(f"/{P}/pending/cancel", self.pending_cancel, ["POST"], "取消排期")
         reg(f"/{P}/settings", self.settings_get, ["GET"], "读取设置")
         reg(f"/{P}/settings/save", self.settings_save, ["POST"], "保存设置")
         reg(f"/{P}/probe", self.probe, ["POST"], "就地测试（视觉/向量）")
@@ -72,62 +66,24 @@ class PanelApi:
         return json_response(data)
 
     # ------------------------------------------------------------------
+    async def records_kinds(self):
+        return json_response({"kinds": [{"key": k, "label": v} for k, v in Records.KINDS]})
+
     async def records_list(self):
         kind = request.query.get("kind", "f")
         limit = request.query.get("limit", 50, type=int)
-        return json_response({"text": await self.app.records.listing(kind, limit)})
+        return json_response({"rows": await self.app.records.rows(kind, limit)})
 
     async def records_mutate(self):
         payload = await request.json(default={})
-        op = str(payload.get("op") or "")
-        if op == "add":
-            out = await self.app.records.add(str(payload.get("kind") or ""), str(payload.get("text") or ""))
-        elif op == "edit":
-            out = await self.app.records.edit(str(payload.get("rid") or ""), str(payload.get("text") or ""))
-        elif op == "del":
-            out = await self.app.records.delete(str(payload.get("rid") or ""))
-        elif op == "state":
-            out = await self.app.records.set_state_cmd(str(payload.get("key") or ""), str(payload.get("text") or ""))
-        else:
-            return error_response("op 必须是 add/edit/del/state")
-        return json_response({"message": out})
+        return json_response({"message": await self.app.records.mutate(
+            op=str(payload.get("op") or ""),
+            rid=str(payload.get("rid") or ""),
+            kind=str(payload.get("kind") or ""),
+            text=str(payload.get("text") or ""),
+        )})
 
     # ------------------------------------------------------------------
-    async def diaries(self):
-        rows = await self.app.dao.recent_diaries(
-            request.query.get("limit", 14, type=int), request.query.get("type", "daily")
-        )
-        return json_response({"items": rows})
-
-    async def facts(self):
-        rows = await self.app.dao.list_facts(
-            subject=request.query.get("subject") or None, limit=300
-        )
-        return json_response({"items": rows})
-
-    async def cheatsheet(self):
-        return json_response({"item": await self.app.dao.latest_cheatsheet()})
-
-    async def chatlog(self):
-        rows = await self.app.dao.recent_chat(request.query.get("limit", 100, type=int))
-        return json_response({"items": rows})
-
-    async def events(self):
-        rows = await self.app.dao.recent_events(request.query.get("limit", 50, type=int))
-        return json_response({"items": rows})
-
-    # ------------------------------------------------------------------
-    async def pending(self):
-        return json_response({"items": await self.app.dao.pending_list(50)})
-
-    async def pending_cancel(self):
-        payload = await request.json(default={})
-        aid = payload.get("id")
-        if not isinstance(aid, int):
-            return error_response("缺少 id")
-        await self.app.dao.finish_action(aid, "cancelled")
-        return json_response({"ok": True})
-
     async def settings_get(self):
         return json_response({"groups": list(GROUPS), "items": self.app.conf.dump()})
 

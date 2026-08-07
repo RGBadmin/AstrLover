@@ -86,6 +86,96 @@ async function renderOverview() {
   );
 }
 
+/* ================= 记录 ================= */
+async function renderRecords() {
+  const kinds = (await call(() => bridge.apiGet("records/kinds"))).kinds || [];
+  let current = renderRecords._kind || "f";
+
+  const tabs = el("div", { class: "toolbar" });
+  const list = el("div");
+
+  const mutate = async (payload) => {
+    const r = await call(() => bridge.apiPost("records/mutate", payload));
+    toast(r.message || "已处理");
+    await load();
+  };
+
+  const card = (row) => {
+    const chips = (row.chips || []).filter(Boolean).map((c) => el("span", { class: "tag" }, c));
+    const body = row.multiline
+      ? el("textarea", { style: "min-height:90px" })
+      : el("input", { type: "text", style: "width:100%" });
+    body.value = row.body || "";
+    body.disabled = !row.editable;
+
+    const ops = [];
+    if (row.editable) {
+      ops.push(el("button", {
+        class: "mini",
+        onclick: () => mutate({ op: "edit", rid: row.rid, text: body.value }),
+      }, "保存"));
+    }
+    if (row.deletable) {
+      ops.push(el("button", {
+        class: "mini",
+        onclick: () => {
+          if (confirm(`删除 ${row.rid}？`)) mutate({ op: "del", rid: row.rid });
+        },
+      }, "删除"));
+    }
+    return el("div", { class: "card", style: "margin-bottom:8px" }, [
+      el("div", { class: "meta", style: "margin-bottom:4px" },
+        [el("span", { class: "tag" }, row.rid), ...chips]),
+      body,
+      el("div", { class: "form-row", style: "margin:6px 0 0" },
+        [el("span", { class: "meta", style: "flex:1" }, row.meta || ""), ...ops]),
+    ]);
+  };
+
+  const load = async () => {
+    const d = await call(() => bridge.apiGet("records", { kind: current, limit: 60 }));
+    const rows = d.rows || [];
+    list.replaceChildren(...rows.map(card));
+    if (!rows.length) list.textContent = "（这一类还没有记录）";
+    for (const b of tabs.querySelectorAll("button[data-kind]")) {
+      b.className = b.dataset.kind === current ? "action" : "ghost";
+    }
+  };
+
+  for (const k of kinds) {
+    tabs.append(el("button", {
+      class: "ghost", "data-kind": k.key,
+      onclick: () => { current = renderRecords._kind = k.key; load(); },
+    }, k.label));
+  }
+
+  const addKind = el("select", {});
+  for (const [v, label] of [["f", "事实"], ["e", "事件"], ["m", "纪念日"], ["s", "日程"]]) {
+    addKind.append(el("option", { value: v }, label));
+  }
+  const addText = el("input", {
+    type: "text", style: "flex:1;min-width:260px",
+    placeholder: "新记录内容（纪念日：2026-04-20 认识的日子 since；日程：14:00-16:00 逛街）",
+  });
+
+  view.replaceChildren(
+    tabs,
+    el("div", { class: "toolbar" }, [
+      addKind, addText,
+      el("button", {
+        class: "action",
+        onclick: async () => {
+          if (!addText.value.trim()) return toast("内容是空的");
+          await mutate({ op: "add", kind: addKind.value, text: addText.value });
+          addText.value = "";
+        },
+      }, "添加"),
+    ]),
+    list,
+  );
+  await load();
+}
+
 /* ================= 设置 ================= */
 async function renderSettings() {
   const d = await call(() => bridge.apiGet("settings"));
@@ -187,180 +277,11 @@ async function renderSettings() {
   );
 }
 
-/* ================= 记录 ================= */
-const REC_KINDS = [
-  ["f", "事实"], ["e", "事件"], ["s", "日程"], ["m", "纪念日"],
-  ["p", "排期"], ["o", "情绪"], ["d", "日记"],
-];
-
-async function renderRecords() {
-  const sel = el("select", {});
-  for (const [v, label] of REC_KINDS) sel.append(el("option", { value: v }, label));
-  const body = el("pre", { class: "list-item", style: "white-space:pre-wrap" });
-  const addKind = el("select", {});
-  for (const [v, label] of [["f", "事实"], ["e", "事件"], ["m", "纪念日"], ["s", "日程"]]) {
-    addKind.append(el("option", { value: v }, label));
-  }
-  const addText = el("input", { type: "text", placeholder: "内容（纪念日：2026-04-20 认识的日子 since）" });
-  const ridInput = el("input", { type: "text", placeholder: "编号 如 f12", style: "min-width:110px" });
-  const editText = el("input", { type: "text", placeholder: "改成什么（留空则删除）" });
-
-  const load = async () => {
-    const d = await call(() => bridge.apiGet("records", { kind: sel.value, limit: 60 }));
-    body.textContent = d.text || "（空）";
-  };
-  const mutate = async (payload) => {
-    const r = await call(() => bridge.apiPost("records/mutate", payload));
-    toast(r.message || "已处理");
-    load();
-  };
-
-  sel.addEventListener("change", load);
-  view.replaceChildren(
-    el("div", { class: "toolbar" }, [
-      sel,
-      el("button", { class: "ghost", onclick: load }, "刷新"),
-      el("span", { class: "meta" }, "她是谁写在 AstrBot 人格里；这里是随时间生长的记录。"),
-    ]),
-    el("div", { class: "toolbar" }, [
-      addKind, addText,
-      el("button", {
-        class: "action",
-        onclick: () => mutate({ op: "add", kind: addKind.value, text: addText.value }),
-      }, "添加"),
-    ]),
-    el("div", { class: "toolbar" }, [
-      ridInput, editText,
-      el("button", {
-        class: "ghost",
-        onclick: () => mutate(
-          editText.value.trim()
-            ? { op: "edit", rid: ridInput.value, text: editText.value }
-            : { op: "del", rid: ridInput.value },
-        ),
-      }, "改 / 删"),
-    ]),
-    body,
-  );
-  await load();
-}
-
-/* ================= 日记 ================= */
-async function renderDiary() {
-  const load = async (type) => {
-    const d = await call(() => bridge.apiGet("diaries", { limit: 20, type }));
-    list.replaceChildren(
-      ...(d.items || []).reverse().map((it) =>
-        el("div", { class: "list-item" }, [
-          el("div", { class: "meta" }, `${it.date}　${it.mood || ""}`),
-          el("div", {}, it.content),
-        ]),
-      ),
-    );
-    if (!d.items || !d.items.length) list.textContent = "（还没有日记）";
-  };
-  const list = el("div");
-  view.replaceChildren(
-    el("div", { class: "toolbar" }, [
-      el("button", { class: "ghost", onclick: () => load("daily") }, "日记"),
-      el("button", { class: "ghost", onclick: () => load("weekly") }, "周记"),
-    ]),
-    list,
-  );
-  await load("daily");
-}
-
-/* ================= 记忆 ================= */
-async function renderMemory() {
-  const [sheet, facts] = await Promise.all([
-    call(() => bridge.apiGet("cheatsheet")),
-    call(() => bridge.apiGet("facts")),
-  ]);
-  const item = sheet.item;
-  const factNode = (f) =>
-    el("div", { class: "list-item" }, [
-      el("span", { class: "tag" }, f.subject),
-      f.category ? el("span", { class: "tag" }, f.category) : "",
-      f.content,
-      el("div", { class: "meta" }, `${f.source}　${ts(f.updated_ts)}`),
-    ]);
-  view.replaceChildren(
-    el("div", { class: "card wide", style: "margin-bottom:12px" }, [
-      el("h3", {}, `核心小抄（v${item ? item.version : 0}，她自己修订）`),
-      el("div", { class: "big" }, item ? item.content : "（她还没写小抄）"),
-    ]),
-    el("h3", {}, `结构化事实（${(facts.items || []).length}）`),
-    ...(facts.items || []).map(factNode),
-  );
-}
-
-/* ================= 对话 ================= */
-async function renderChat() {
-  const d = await call(() => bridge.apiGet("chatlog", { limit: 120 }));
-  view.replaceChildren(
-    ...(d.items || []).map((c) =>
-      el("div", { class: "list-item" }, [
-        el("div", { class: "meta" }, `${c.role === "user" ? "他" : "她"}（${c.kind}）　${ts(c.ts)}`),
-        el("div", {}, c.content),
-      ]),
-    ),
-  );
-  window.scrollTo(0, document.body.scrollHeight);
-}
-
-/* ================= 事件 ================= */
-async function renderEvents() {
-  const d = await call(() => bridge.apiGet("events", { limit: 60 }));
-  const mention = { unmentioned: "未提及", told: "已讲过", discovered: "被发现" };
-  view.replaceChildren(
-    ...(d.items || []).map((e) =>
-      el("div", { class: "list-item" }, [
-        el("span", { class: "tag" }, e.kind),
-        el("span", { class: "tag" }, mention[e.mention_status] || e.mention_status),
-        e.description,
-        el("div", { class: "meta" }, `${e.motivation ? "动机：" + e.motivation + "　" : ""}${ts(e.ts)}`),
-      ]),
-    ),
-  );
-}
-
-/* ================= 排期 ================= */
-async function renderPlans() {
-  const d = await call(() => bridge.apiGet("pending"));
-  const items = d.items || [];
-  const nodes = items.map((p) =>
-    el("div", { class: "list-item" }, [
-      el("span", { class: "tag" }, p.kind),
-      "#" + p.id + "　" + ts(p.due_ts) + "　" + ((p.payload && p.payload.cmd) || JSON.stringify(p.payload)),
-      el("button", {
-        class: "mini",
-        style: "margin-left:8px",
-        onclick: async () => {
-          await call(() => bridge.apiPost("pending/cancel", { id: p.id }));
-          renderPlans();
-        },
-      }, "取消"),
-    ]),
-  );
-  view.replaceChildren(
-    el("div", { class: "card wide", style: "margin-bottom:12px" }, [
-      el("h3", {}, "排期（在控制台 bot 用 /plan 创建，如 /plan 20:00 /act 提醒他……）"),
-    ]),
-    ...nodes,
-  );
-  if (!items.length) view.append("（没有排期）");
-}
-
 /* ================= 路由 ================= */
 const routes = {
   overview: renderOverview,
   records: renderRecords,
   settings: renderSettings,
-  diary: renderDiary,
-  memory: renderMemory,
-  chat: renderChat,
-  events: renderEvents,
-  plans: renderPlans,
 };
 
 document.getElementById("tabs").addEventListener("click", async (e) => {

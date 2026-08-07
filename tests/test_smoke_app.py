@@ -12,9 +12,31 @@ from pathlib import Path
 import pytest
 
 
+class _FakeConvManager:
+    def __init__(self, ctx):
+        self._ctx = ctx
+
+    async def get_curr_conversation_id(self, _umo):
+        return "cid-1"
+
+    async def get_conversation(self, _umo, _cid):
+        import json as _json
+        import types as _types
+        return _types.SimpleNamespace(history=_json.dumps(self._ctx.history), persona_id=None)
+
+    async def update_conversation(self, _umo, _cid, history=None):
+        if history is not None:
+            self._ctx.history = history
+
+    async def get_conversations(self, *_a, **_k):
+        return []
+
+
 class _FakeContext:
     def __init__(self):
         self.web_apis = []
+        self.history = []
+        self.conversation_manager = _FakeConvManager(self)
 
     def register_web_api(self, route, handler, methods, desc):
         self.web_apis.append(route)
@@ -241,6 +263,87 @@ def test_records_crud_and_cleanup(app_factory):
         assert "很久以前但还没提过的" in await r.listing("e")   # 没提过的留着
         assert gone.get("失效事实") == 1
         assert gone.get("消散的情绪") == 1
+        await app.terminate()
+    run(go())
+
+
+def test_records_rows_for_ui(app_factory):
+    """面板要的是结构化行：每条带 rid、可编辑/可删除标志，能单独改和删。"""
+    async def go():
+        app = app_factory()
+        await app.initialize()
+        r = app.records
+
+        await r.add("f", "user 他不吃香菜")
+        await r.add("m", "2026-04-20 认识的日子 since")
+        await app.dao.add_event("life", "去了咖啡店", motivation="想换个地方画画")
+
+        facts = await r.rows("f")
+        assert facts[0]["rid"] == "f1"
+        assert facts[0]["body"] == "他不吃香菜"
+        assert facts[0]["editable"] and facts[0]["deletable"]
+        assert "你手动加的" in facts[0]["meta"]
+
+        events = await r.rows("e")
+        assert events[0]["body"] == "去了咖啡店"
+        assert "还没跟他提" in events[0]["chips"]
+        assert "想换个地方画画" in events[0]["meta"]
+
+        milestones = await r.rows("m")
+        assert milestones[0]["chips"][:2] == ["2026-04-20", "算天数"]
+
+        # 状态行：可改不可删
+        states = {row["rid"]: row for row in await r.rows("state")}
+        assert states["state:stage"]["editable"] and not states["state:stage"]["deletable"]
+        assert states["state:cheatsheet"]["multiline"]
+
+        # 面板统一入口：改一条、删一条、改状态、改小抄
+        assert "改成" in await r.mutate("edit", rid="f1", text="他其实爱吃香菜")
+        assert (await r.rows("f"))[0]["body"] == "他其实爱吃香菜"
+        assert "已删除" in await r.mutate("del", rid="e1")
+        assert await r.rows("e") == []
+        await r.mutate("edit", rid="state:stage", text="稳定")
+        assert await r.get_state("stage") == "稳定"
+        await r.mutate("edit", rid="state:cheatsheet", text="他怕冷")
+        assert (await app.dao.latest_cheatsheet())["content"] == "他怕冷"
+        await app.terminate()
+    run(go())
+
+
+def test_transcript_reads_astrbot_history(app_factory):
+    """对话素材直接读 AstrBot 历史，按内嵌时间锚点切片；没锚点则退化为最近 N 条。"""
+    async def go():
+        from astrlover.memory import transcript
+
+        app = app_factory()
+        await app.initialize()
+        await app.set_target("tg:FriendMessage:123")
+
+        app.context.history = [
+            {"role": "user", "content": "Current datetime: 2026-08-05 20:00\n昨天的话"},
+            {"role": "assistant", "content": "[08-05 20:01] 昨天的回应"},
+            {"role": "user", "content": "Current datetime: 2026-08-06 09:00\n今天的话"},
+            {"role": "assistant", "content": "[08-06 09:01] 今天的回应"},
+            {"role": "user", "content": [
+                {"type": "text", "text": "<system_reminder>忽略我</system_reminder>"},
+                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,xx"}},
+            ]},
+        ]
+        rows = await transcript.load(app)
+        assert [r["role"] for r in rows] == ["user", "her", "user", "her"]  # 噪声消息被剔除
+        assert rows[0]["text"] == "昨天的话"                                # 锚点已剥离
+        assert rows[1]["text"] == "昨天的回应"                              # 她的戳也剥掉
+        assert rows[0]["ts"] and rows[2]["ts"] > rows[0]["ts"]
+
+        day = await transcript.on_day(app, "2026-08-06")
+        assert [r["text"] for r in day] == ["今天的话", "今天的回应"]
+
+        script = transcript.as_script(day)
+        assert script.startswith("他：今天的话") and "我：今天的回应" in script
+
+        # 没有任何锚点时不硬猜，退化为最近 N 条
+        app.context.history = [{"role": "user", "content": "没有时间锚点"}]
+        assert len(await transcript.on_day(app, "2026-08-06")) == 1
         await app.terminate()
     run(go())
 

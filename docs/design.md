@@ -48,7 +48,7 @@ astrlover/
 ├── director/            bot（PTB 传输层）· console（命令）· bridge（说话/写历史/按人格生成）
 ├── heart/               heartbeat（心跳）· proactive（意愿式主动）· impulses（生活冲动）
 ├── life/                clock（时间感知）· engine（日程自生成+作息读记录）· mood（情绪半衰期）
-├── memory/              pipeline（事实/小抄/日记/周记/召回）· working（对话素材）
+├── memory/              pipeline（事实/小抄/日记/周记/召回）· transcript（读 AstrBot 对话历史）
 ├── persona/prompt.py    注入块组装（人设不在这里）
 ├── records.py           统一记录门面：增删改 + 生命周期清理
 ├── imagegen/            三后端 + 提示词构建（锚点图保一致性）
@@ -110,7 +110,17 @@ AstrBot 本来就带时间，不重复打）；她模仿上下文自写的时间
 所以设置页旁边直接放了视觉/向量的「测一下」按钮。
 Settings.get() 保持同步（启动时把覆盖值读进内存），调用点无需改 async。
 
-**D11 生命层可整个关掉**：`life_enabled=false` 时 `App.ready=False`，
+**D11 对话不留副本**：写日记与抽事实的素材直接读 AstrBot 的对话历史，
+插件不存 chat_log——存了就是第二事实源（你在 AstrBot 清空对话，副本还在，
+日记会写出已删掉的内容）。时间靠历史正文里的 `Current datetime:` 锚点与
+她自己消息的 `[MM-DD HH:MM]` 戳；两者都没有时退化成"最近 N 条"，不硬猜。
+静默期（/noreply）禁掉了 LLM，AstrBot 不写历史，由 bridge.append_user 补一笔。
+
+**D12 记录 UI 是逐条的**：面板返回结构化行（rid / chips / body / meta /
+editable / deletable），每条渲染成一张可就地编辑与删除的卡片，而不是
+一大块只读文本。状态与小抄也是行，只是不可删。
+
+**D13 生命层可整个关掉**：`life_enabled=false` 时 `App.ready=False`，
 presence 能力照常工作；生图在没有外观记录时退化为纯情境描述。
 
 ## 四、数据模型（astrlover.db）
@@ -119,14 +129,14 @@ presence 能力照常工作；生图在没有外观记录时退化为纯情境�
 `photo_archive`（聊天图片：sha/文件/首见时间/目录层/细节层）
 `milestones`（纪念日：anniversary 每年 / since 算天数 / once 一次性）
 `facts`（可失效原子事实）· `diary`（daily/weekly）· `events`（内容/动机/提及状态）
-`schedule`（当日日程）· `mood`（强度+半衰期）· `cheatsheet`（版本化小抄）
-`pending_actions`（排期）· `chat_log`（恋人对话素材）· `kvmisc`（游标/计数/动态列表）
+`schedule`（当日日程，含 wake/sleep 边界）· `mood`（强度+半衰期）
+`cheatsheet`（版本化小抄）· `pending_actions`（排期）· `kvmisc`（游标/计数/设置/状态）
 
 向量：FAISS 双库——`memory`（事实/日记，带 ts 做时间衰减）与
 `album`（每图四段，meta={img, seg}）。
 
 ## 五、测试
 
-`python -m pytest tests` —— 58 项，不需要安装 AstrBot：
+`python -m pytest tests` —— 60 项，不需要安装 AstrBot：
 `conftest.py` 提供 astrbot 桩模块，`test_smoke_app.py` 用假 Context 真正启动
 App 跑通装配、钩子注入、相册扫描检索、图片折叠、控制台命令与全部降级路径。

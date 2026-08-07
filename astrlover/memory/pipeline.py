@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 
 from astrbot.api import logger
 
+from . import transcript
+
 _FACTS_SYSTEM = (
     "你是记忆整理助手。从对话片段中提取值得长期记住的原子事实，并对照已有事实找出已过时的。"
     "事实要短、独立、无上下文依赖。subject 取值：user（关于他）、self（关于她自己）、"
@@ -57,12 +59,10 @@ class MemoryPipeline:
         await app.dao.kv_set("memory_dirty", 0)
 
         since = await app.dao.kv_get("consolidated_ts", 0)
-        rows = await app.dao.chat_between(since, int(time.time()))
+        rows = await transcript.since(app, since)
         if len(rows) < 2:
             return
-        convo = "\n".join(
-            f"{'他' if r['role'] == 'user' else '她'}：{r['content'][:200]}" for r in rows[-80:]
-        )
+        convo = transcript.as_script(rows, limit=80, width=200)
         existing = await app.dao.list_facts(limit=120)
         facts_list = "\n".join(f"[{f['id']}] ({f['subject']}) {f['content']}" for f in existing)
 
@@ -130,7 +130,7 @@ class MemoryPipeline:
         if app.clock.tz is not None:
             day_dt = day_dt.replace(tzinfo=app.clock.tz)
         day_start = int(day_dt.timestamp())
-        chats = await app.dao.chat_between(day_start, day_start + 86400)
+        chats = await transcript.on_day(app, date_str)
         events = [e for e in await app.dao.recent_events(20) if e["ts"] >= day_start]
         sched = await app.dao.day_schedule(date_str)
         done = [s for s in sched if s["kind"] == "activity" and s["status"] in ("done", "ongoing")]
@@ -143,10 +143,7 @@ class MemoryPipeline:
         if events:
             material.append("发生的事：" + "；".join(e["description"] for e in events[:6]))
         if chats:
-            snippet = "\n".join(
-                f"{'他' if c['role'] == 'user' else '我'}：{c['content'][:120]}" for c in chats[-40:]
-            )
-            material.append(f"和他聊的（节选）：\n{snippet}")
+            material.append("和他聊的（节选）：\n" + transcript.as_script(chats))
         if not material:
             material.append("今天没和他说上话，自己过了一天。")
 

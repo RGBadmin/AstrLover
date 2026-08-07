@@ -33,7 +33,6 @@ from .life.engine import LifeEngine
 from .life.mood import MoodEngine
 from .llm import LLM
 from .memory.pipeline import MemoryPipeline
-from .memory.working import WorkingMemory
 from .panel.api import PanelApi
 from .persona.prompt import build_life_block
 from .records import Records
@@ -95,7 +94,6 @@ class App:
 
         # 生命层
         self.records: Records | None = None
-        self.working: WorkingMemory | None = None
         self.memory: MemoryPipeline | None = None
         self.life: LifeEngine | None = None
         self.mood: MoodEngine | None = None
@@ -153,7 +151,6 @@ class App:
 
     async def _init_life(self):
         """生命层：她是谁由人格负责，这里只装配记录与心跳相关的子系统。"""
-        self.working = WorkingMemory(self.dao)
         self.memory = MemoryPipeline(self)
         self.life = LifeEngine(self)
         self.mood = MoodEngine(self.dao)
@@ -217,9 +214,7 @@ class App:
             is_partner = self.is_partner(event)
             if is_partner:
                 self.llm.owner_umo = event.unified_msg_origin
-                text = (event.message_str or "").strip()
-                if text:
-                    await self.working.log_user(text)
+                if text := (event.message_str or "").strip():
                     await self.mood.on_user_message(text)
                 await self.proactive.on_user_message()
             query = (event.message_str or "").strip() or "聊天"
@@ -251,8 +246,6 @@ class App:
                     await self.dao.set_event_mention(eid, "told")
                 for eid in found:
                     await self.dao.set_event_mention(eid, "discovered")
-                if out.strip():
-                    await self.working.log_her(out.strip())
                 await self.dao.kv_set("memory_dirty", 1)
             except Exception:
                 logger.error("[AstrLover] 生命层响应处理失败：", exc_info=True)

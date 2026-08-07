@@ -18,17 +18,6 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT NOT NULL
 );
 
--- 自管对话历史（工作记忆底层）
-CREATE TABLE IF NOT EXISTS chat_log (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts      INTEGER NOT NULL,
-    role    TEXT NOT NULL,              -- user / her
-    kind    TEXT NOT NULL DEFAULT 'text', -- text/voice/photo/sticker/system
-    content TEXT NOT NULL,
-    meta    TEXT NOT NULL DEFAULT '{}'
-);
-CREATE INDEX IF NOT EXISTS idx_chat_ts ON chat_log (ts);
-
 -- 结构化事实（A1 第三层；A6 编造固化也进这里，subject='self'）
 CREATE TABLE IF NOT EXISTS facts (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -27,34 +27,6 @@ class Dao:
     def __init__(self, db: Database):
         self.db = db
 
-    # ================= chat_log =================
-    async def add_chat(self, role: str, content: str, kind: str = "text", meta: dict | None = None, ts: int | None = None) -> int:
-        return await self.db.execute(
-            "INSERT INTO chat_log(ts, role, kind, content, meta) VALUES (?,?,?,?,?)",
-            (ts or now_ts(), role, kind, content, _j(meta)),
-        )
-
-    async def recent_chat(self, limit: int = 40) -> list[dict]:
-        rows = await self.db.fetchall(
-            "SELECT * FROM chat_log ORDER BY ts DESC, id DESC LIMIT ?", (limit,)
-        )
-        return [_load_meta(r, "meta") for r in reversed(rows)]
-
-    async def chat_between(self, ts0: int, ts1: int) -> list[dict]:
-        rows = await self.db.fetchall(
-            "SELECT * FROM chat_log WHERE ts >= ? AND ts < ? ORDER BY ts, id", (ts0, ts1)
-        )
-        return [_load_meta(r, "meta") for r in rows]
-
-    async def last_chat_ts(self, role: str | None = None) -> int:
-        if role:
-            row = await self.db.fetchone(
-                "SELECT ts FROM chat_log WHERE role = ? ORDER BY ts DESC LIMIT 1", (role,)
-            )
-        else:
-            row = await self.db.fetchone("SELECT ts FROM chat_log ORDER BY ts DESC LIMIT 1")
-        return int(row["ts"]) if row else 0
-
     # ================= facts =================
     async def add_fact(self, subject: str, content: str, category: str = "", source: str = "chat", vec_id: str = "") -> int:
         ts = now_ts()
