@@ -109,7 +109,7 @@ class MemoryPipeline:
         old = await app.cheatsheet_text()
         user_facts = await app.dao.list_facts(subject="user", limit=60)
         facts_text = "\n".join(f"- {f['content']}" for f in user_facts) or "（还不多）"
-        stage = app.dynamic.stage(str(app.profile.relationship.get("stage", "热恋")))
+        stage = app.dynamic.stage(app.profile.stage)
         try:
             new_sheet = await app.llm.light(
                 f"旧小抄：\n{old or '（还没写过）'}\n\n最新事实：\n{facts_text}\n\n当前关系阶段：{stage}",

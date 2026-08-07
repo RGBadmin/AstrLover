@@ -37,8 +37,8 @@ from .memory.pipeline import MemoryPipeline
 from .memory.working import WorkingMemory
 from .panel.api import PanelApi
 from .persona.dynamic import DynamicState
-from .persona.profile import Profile
-from .persona.prompt import build_system_prompt
+from .persona.profile import LifeProfile
+from .persona.prompt import build_life_block
 from .photos.archive import PhotoArchive
 from .photos.memory import PhotoMemory
 from .photos.sender import PhotoSender
@@ -96,7 +96,7 @@ class App:
         self.state_target: str = ""
 
         # 生命层
-        self.profile: Profile | None = None
+        self.profile: LifeProfile | None = None
         self.dynamic: DynamicState | None = None
         self.working: WorkingMemory | None = None
         self.memory: MemoryPipeline | None = None
@@ -153,11 +153,7 @@ class App:
         logger.info("[AstrLover] 装配完成。")
 
     async def _init_life(self):
-        profile_path = self.persona_dir / "profile.yaml"
-        if not profile_path.exists():
-            shutil.copy(_PLUGIN_ROOT / "examples" / "persona.example.yaml", profile_path)
-            logger.info(f"[AstrLover] 已生成生命档案模板：{profile_path}")
-        self.profile = Profile.load(profile_path)
+        self.profile = LifeProfile.load(self._ensure_life_file())
         self.dynamic = DynamicState(self.persona_dir / "dynamic.yaml")
         self.dynamic.load()
         if self.profile.met_on:
@@ -174,6 +170,34 @@ class App:
         await self._seed_backstory()
         self.ready = True
         logger.info(f"[AstrLover] 生命模拟层就绪：{self.profile.name} 醒来了。")
+
+    def _ensure_life_file(self) -> Path:
+        """生命参数文件。旧版 profile.yaml 存在时自动迁移一次：
+        结构化字段搬过来，人设文字丢弃（那部分现在归 AstrBot 人格）。"""
+        life_path = self.persona_dir / "life.yaml"
+        if life_path.exists():
+            return life_path
+        legacy = self.persona_dir / "profile.yaml"
+        if legacy.exists():
+            import yaml
+
+            data = yaml.safe_load(legacy.read_text(encoding="utf-8")) or {}
+            if "identity" in data or "personality" in data:   # 旧版嵌套结构
+                life_path.write_text(
+                    yaml.safe_dump(LifeProfile.from_legacy(data), allow_unicode=True, sort_keys=False),
+                    encoding="utf-8",
+                )
+                legacy.rename(self.persona_dir / "profile.yaml.bak")
+                logger.info(
+                    "[AstrLover] 旧版生命档案已迁移为 life.yaml（原文件存为 profile.yaml.bak）。"
+                    "人设文字请移到 AstrBot 人格设定里。"
+                )
+                return life_path
+            legacy.rename(life_path)   # 已经是新结构，改个名就行
+            return life_path
+        shutil.copy(_PLUGIN_ROOT / "examples" / "life.example.yaml", life_path)
+        logger.info(f"[AstrLover] 已生成生命参数模板：{life_path}")
+        return life_path
 
     async def terminate(self):
         self.ready = self.booted = False
@@ -240,7 +264,7 @@ class App:
                 "【注意】现在跟你说话的不是你的恋人本人（可能是陌生人或群聊），"
                 "按你的性格和边界应对：礼貌、有分寸、不透露你们的私事。"
             )
-            self.inject_text(req, await self.build_master_prompt(query, extra_note=extra))
+            self.inject_text(req, await self.build_life_block(query, extra_note=extra))
         except Exception:
             logger.error("[AstrLover] 生命层注入失败：", exc_info=True)
 
@@ -282,13 +306,13 @@ class App:
     # ==================================================================
     # 提示词
     # ==================================================================
-    async def build_master_prompt(self, query_text: str, extra_note: str = "") -> str:
+    async def build_life_block(self, query_text: str, extra_note: str = "") -> str:
         clock_text = self.clock.describe_now(self.profile.met_on, self.profile.anniversary)
         if specials := self.clock.upcoming_specials(
             self.dynamic.milestones, self.profile.birthday, within_days=3
         ):
             clock_text += "（" + "；".join(specials) + "）"
-        return build_system_prompt(
+        return build_life_block(
             self.profile, self.dynamic,
             clock_text=clock_text,
             life_text=await self.life.prompt_text() if self.life else "",
@@ -298,7 +322,6 @@ class App:
             memories_text=await self.memory.recall(query_text),
             events_text=await self.events_text(),
             extra_note=extra_note,
-            pipeline=True,
         )
 
     async def cheatsheet_text(self) -> str:

@@ -348,7 +348,7 @@
   "life": {
     "description": "⑧ 生命模拟",
     "type": "object",
-    "hint": "人格档案在 data/plugin_data/astrlover/persona/profile.yaml，Web 面板可编辑。",
+    "hint": "她是谁、什么性格由 AstrBot 人格设定负责；这里只放人格写不了的：作息、纪念日、外观基准、身世条目。",
     "items": {
       "life_enabled": {
         "description": "启用生命模拟层",

@@ -15,7 +15,7 @@
    │    ③ recall 的原图放回本轮
    │    ④ 历史动态按时间戳插进对话时间线（_no_save）
    │    ⑤ 上下文图片折叠（编号已分配，最后做）
-   │    ⑥ 生命层：她的此刻（人格/记忆/生活/情绪/时间/未提及事件）
+   │    ⑥ 生命层：她的此刻（时间/日程/心情）+ 记忆 + 未提及的事
    ├─ LLM（会话当前模型；12 个工具由她自己决定何时调用）
    └─ on_llm_response：摘 <img_note> 存档、摘生命层内部标记，剥干净再发出
 
@@ -48,7 +48,7 @@ astrlover/
 ├── heart/               heartbeat（心跳）· proactive（意愿式主动）· impulses（生活冲动）
 ├── life/                clock（时间感知）· engine（日程）· mood（情绪半衰期）
 ├── memory/              pipeline（事实/小抄/日记/周记/召回）· working（对话素材）
-├── persona/             profile（静态档案）· dynamic（演化状态）· prompt（system 组装）
+├── persona/             profile（生命参数）· dynamic（演化状态）· prompt（生命块组装）
 ├── imagegen/            三后端 + 提示词构建（锚点图保一致性）
 ├── voice/               TTS → ogg 语音条
 ├── panel/ + pages/panel Web 面板（Plugin Pages + register_web_api）
@@ -85,8 +85,14 @@ AstrBot 本来就带时间，不重复打）；她模仿上下文自写的时间
 **D8 频控只约束自主行为**：手动指令随时可用、不消耗配额、不重置计时；
 触发限制时返回给她一句能读懂的话，她就不会反复重试。
 
-**D9 生命层可整个关掉**：`life_enabled=false` 时 `App.ready=False`，
-presence 能力照常工作；生图在无档案时退化为纯情境描述。
+**D9 人设只有一个来源**：她是谁、什么性格、怎么说话、有哪些朋友全部由
+AstrBot 人格设定负责；插件的生命块只注入人格写不了的——此刻（时间/日程/心情）、
+记忆（小抄/日记/召回）、她做过但他不知道的事、以及 P1 铁律（产品承诺，
+不让人格覆盖）。life.yaml 只存代码消费的结构化字段：name/call_me、
+生日与纪念日、外观基准（生图锚）、身世条目（播种进事实层）、作息（心跳地基）。
+
+**D10 生命层可整个关掉**：`life_enabled=false` 时 `App.ready=False`，
+presence 能力照常工作；生图在无生命参数时退化为纯情境描述。
 
 ## 四、数据模型（astrlover.db）
 
@@ -101,6 +107,6 @@ presence 能力照常工作；生图在无档案时退化为纯情境描述。
 
 ## 五、测试
 
-`python -m pytest tests` —— 53 项，不需要安装 AstrBot：
+`python -m pytest tests` —— 54 项，不需要安装 AstrBot：
 `conftest.py` 提供 astrbot 桩模块，`test_smoke_app.py` 用假 Context 真正启动
 App 跑通装配、钩子注入、相册扫描检索、图片折叠、控制台命令与全部降级路径。

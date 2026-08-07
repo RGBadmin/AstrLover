@@ -80,13 +80,13 @@ async function renderOverview() {
             toast("正在打包…");
             await call(() => bridge.download("export", { gallery: 1 }));
           },
-        }, "导出档案与记忆包"),
+        }, "导出生命参数与记忆包"),
       ]),
     ]),
   );
 }
 
-/* ================= 档案 ================= */
+/* ================= 生命参数 ================= */
 async function renderPersona() {
   const d = await call(() => bridge.apiGet("profile"));
   const ta = el("textarea", {}, d.profile || "");
@@ -101,8 +101,8 @@ async function renderPersona() {
           await call(() => bridge.apiPost("profile/save", { profile: ta.value }));
           toast("已保存并热加载");
         },
-      }, "保存生命档案"),
-      el("span", { class: "meta" }, "静态基线（她是谁）。下方为系统演化的动态层（只读）。"),
+      }, "保存生命参数"),
+      el("span", { class: "meta" }, "作息、纪念日、外观基准、身世。人设写在 AstrBot 人格设定里。下方为系统演化的动态层（只读）。"),
     ]),
     ta,
     el("h3", {}, "动态层 dynamic.yaml"),

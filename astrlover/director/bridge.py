@@ -168,10 +168,10 @@ class DirectorBridge:
         system_prompt = await self.persona_of(target, conv)
         if not system_prompt:
             logger.warning("[AstrLover] 没拿到人格，这次只靠历史模仿语气")
-        if app.ready:  # 生命层：把她的此刻接在人格之后
+        if app.ready:  # 人格是 system_prompt 的主体，这里只补她的此刻与记忆
             try:
                 system_prompt = (system_prompt + "\n\n" +
-                                 await app.build_master_prompt(brief[:60] or "主动开口")).strip()
+                                 await app.build_life_block(brief[:60] or "主动开口")).strip()
             except Exception as e:
                 logger.debug(f"[AstrLover] 生命层上下文拼接失败：{e}")
 

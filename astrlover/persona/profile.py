@@ -1,7 +1,14 @@
-"""生命档案（静态基线）加载与取用。
+"""生命参数：AstrBot 人格表达不了的那部分「她」。
 
-档案是"她是谁"的只读基线（R1）；运行期演化一律写入 dynamic 层，
-换档案不丢"我们的过去"。
+她是谁、什么性格、怎么说话、有哪些朋友——全部交给 AstrBot 人格页，
+单一来源、WebUI 可编辑可切换。这里只留代码要用的结构化字段：
+
+  name / call_me      日记与小抄的生成模板要用，日程随机种子也要用
+  birthday / met_on / anniversary   纪念日与「认识第 N 天」
+  appearance          生图的外观锚（与动态层的演变合并）
+  backstory           分条播种进事实层，聊到才召回，不常驻上下文
+  routine             作息与活动池：睡眠判定、日程生成、早晚安窗口的地基
+  stage               关系阶段初值，之后由周记复盘推进（存动态层）
 """
 
 from pathlib import Path
@@ -13,127 +20,65 @@ class ProfileError(Exception):
     pass
 
 
-class Profile:
+class LifeProfile:
     def __init__(self, data: dict):
         self.data = data or {}
-        if not self.identity.get("name"):
-            raise ProfileError("生命档案缺少 identity.name")
+        if not self.name:
+            raise ProfileError("生命参数缺少 name")
 
     @classmethod
-    def load(cls, path: Path) -> "Profile":
+    def load(cls, path: Path) -> "LifeProfile":
         with open(path, encoding="utf-8") as f:
             return cls(yaml.safe_load(f) or {})
 
-    # ---- 原始区块 ----
+    # ---- 身份最小集 ----
     @property
-    def identity(self) -> dict:
-        return self.data.get("identity") or {}
+    def name(self) -> str:
+        return str(self.data.get("name", "")).strip()
 
+    @property
+    def call_me(self) -> str:
+        return str(self.data.get("call_me", "") or "亲爱的").strip()
+
+    @property
+    def birthday(self) -> str:
+        return str(self.data.get("birthday", "")).strip()
+
+    @property
+    def met_on(self) -> str:
+        return str(self.data.get("met_on", "")).strip()
+
+    @property
+    def anniversary(self) -> str:
+        return str(self.data.get("anniversary", "")).strip()
+
+    @property
+    def stage(self) -> str:
+        return str(self.data.get("stage", "") or "热恋").strip()
+
+    # ---- 结构化区块 ----
     @property
     def appearance(self) -> dict:
         return self.data.get("appearance") or {}
-
-    @property
-    def personality(self) -> dict:
-        return self.data.get("personality") or {}
 
     @property
     def backstory(self) -> list[str]:
         return [str(x) for x in (self.data.get("backstory") or [])]
 
     @property
-    def npcs(self) -> list[dict]:
-        return [x for x in (self.data.get("social_circle") or []) if isinstance(x, dict)]
-
-    @property
     def routine(self) -> dict:
         return self.data.get("routine") or {}
 
-    @property
-    def voice(self) -> dict:
-        return self.data.get("voice") or {}
-
-    @property
-    def relationship(self) -> dict:
-        return self.data.get("relationship") or {}
-
-    # ---- 常用字段 ----
-    @property
-    def name(self) -> str:
-        return str(self.identity.get("name", ""))
-
-    @property
-    def nickname(self) -> str:
-        return str(self.identity.get("nickname") or self.name)
-
-    @property
-    def call_me(self) -> str:
-        return str(self.relationship.get("call_me", "亲爱的"))
-
-    @property
-    def anniversary(self) -> str:
-        return str(self.relationship.get("anniversary", ""))
-
-    @property
-    def met_on(self) -> str:
-        return str(self.relationship.get("met_on", ""))
-
-    @property
-    def birthday(self) -> str:
-        return str(self.identity.get("birthday", ""))
-
-    # ---- 提示词区块 ----
-    def identity_block(self) -> str:
-        i = self.identity
-        parts = [f"你是{i.get('name', '')}"]
-        if i.get("nickname"):
-            parts.append(f"（亲近的人叫你{i['nickname']}）")
-        if i.get("age"):
-            parts.append(f"，{i['age']}岁")
-        if i.get("occupation"):
-            parts.append(f"，{i['occupation']}")
-        if i.get("city"):
-            parts.append(f"，住在{i['city']}")
-        if i.get("birthday"):
-            parts.append(f"，生日{i['birthday']}")
-        return "".join(parts) + "。"
-
-    def personality_block(self) -> str:
-        p = self.personality
-        lines = []
-        if p.get("traits"):
-            lines.append(f"性格：{str(p['traits']).strip()}")
-        if p.get("speaking_style"):
-            lines.append(f"说话方式：{str(p['speaking_style']).strip()}")
-        if p.get("catchphrases"):
-            lines.append("口癖：" + "、".join(str(c) for c in p["catchphrases"]))
-        if p.get("humor"):
-            lines.append(f"幽默感：{p['humor']}")
-        if p.get("likes"):
-            lines.append("喜欢：" + "、".join(str(c) for c in p["likes"]))
-        if p.get("dislikes"):
-            lines.append("雷点：" + "、".join(str(c) for c in p["dislikes"]))
-        return "\n".join(lines)
-
-    def npc_block(self) -> str:
-        if not self.npcs:
-            return ""
-        lines = ["你生活里的固定人物（名字与设定永远一致，不可改动）："]
-        for npc in self.npcs:
-            lines.append(f"- {npc.get('name', '?')}（{npc.get('relation', '')}）：{npc.get('persona', '')}")
-        return "\n".join(lines)
-
+    # ---- 生图用：外观基准 + 动态演变 ----
     def appearance_text(self, dynamic_state: dict | None = None) -> str:
-        """外观基准 + 动态演变合并后的当前外观描述（A9）。"""
-        a = dict(self.appearance)
+        a = self.appearance
         dyn = dynamic_state or {}
-        hair = dyn.get("hair") or a.get("hair", "")
         parts = []
         if a.get("face"):
             parts.append(f"长相：{a['face']}")
         if a.get("body"):
             parts.append(f"身材：{a['body']}")
-        if hair:
+        if hair := (dyn.get("hair") or a.get("hair", "")):
             parts.append(f"发型：{hair}")
         if a.get("style"):
             parts.append(f"穿衣风格：{a['style']}")
@@ -141,11 +86,21 @@ class Profile:
             parts.append(str(extra))
         return "；".join(parts)
 
-    def relationship_block(self, stage: str, call_me: str | None = None) -> str:
-        r = self.relationship
-        lines = [
-            f"对方是你的恋人，你叫他「{call_me or self.call_me}」，你们现在处于「{stage}」阶段。"
-        ]
-        if r.get("boundaries"):
-            lines.append(f"相处边界：{str(r['boundaries']).strip()}")
-        return "\n".join(lines)
+    # ---- 迁移：认得旧版 profile.yaml 的嵌套结构 ----
+    @classmethod
+    def from_legacy(cls, data: dict) -> dict:
+        """把旧版生命档案里仍然需要的字段抽出来，人设文字丢弃（交给人格页）。"""
+        identity = data.get("identity") or {}
+        rel = data.get("relationship") or {}
+        out = {
+            "name": identity.get("name", ""),
+            "call_me": rel.get("call_me", ""),
+            "birthday": identity.get("birthday", ""),
+            "met_on": rel.get("met_on", ""),
+            "anniversary": rel.get("anniversary", ""),
+            "stage": rel.get("stage", "热恋"),
+            "appearance": data.get("appearance") or {},
+            "backstory": data.get("backstory") or [],
+            "routine": data.get("routine") or {},
+        }
+        return {k: v for k, v in out.items() if v}

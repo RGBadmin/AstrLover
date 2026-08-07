@@ -23,12 +23,11 @@ _QUALITY = "真实感照片，自然光影，手机随手拍的生活质感，�
 
 
 def build_spec(profile, dynamic, situation: str, anchors: list[str]) -> PromptSpec:
+    """外观基准（生命参数）+ 当前演变（动态层）+ 情境 → 提示词。"""
     appearance = profile.appearance_text(dynamic.appearance_state)
-    identity = profile.identity
-    subject = f"{identity.get('age', '二十多')}岁的中国女生"
     positive = "；".join(
         x for x in [
-            f"人物：{subject}，{appearance}" if appearance else f"人物：{subject}",
+            f"人物：{appearance}" if appearance else "",
             f"画面：{situation}",
             _QUALITY,
         ] if x

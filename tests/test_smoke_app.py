@@ -96,8 +96,8 @@ def test_boot_and_teardown(app_factory):
         app = app_factory()
         await app.initialize()
         assert app.booted and app.ready
-        assert app.profile.name          # 档案模板已生成并加载
-        assert (app.persona_dir / "profile.yaml").exists()
+        assert app.profile.name          # 生命参数模板已生成并加载
+        assert (app.persona_dir / "life.yaml").exists()
         assert app.db.conn is not None
         # 面板路由已注册
         assert any("overview" in r for r in app.context.web_apis)
@@ -127,8 +127,10 @@ def test_hooks_survive_without_providers(app_factory):
         injected = req.system_prompt + "".join(
             getattr(p, "text", "") for p in req.extra_user_content_parts
         )
-        assert app.profile.name in injected     # 她的人格进去了
-        assert "铁律" in injected                # 硬约束在场
+        # 注入的是「此刻 + 记忆 + 铁律」，人设归 AstrBot 人格，这里不该重复
+        assert "【此刻】" in injected
+        assert "铁律" in injected
+        assert app.profile.name not in injected
 
         resp = _FakeResp('好呀<improv>我妈是老师</improv><img_note id="1">测试</img_note>')
         await app.on_llm_response(event, resp)
@@ -136,6 +138,23 @@ def test_hooks_survive_without_providers(app_factory):
         assert "<img_note" not in resp.completion_text
         facts = await app.dao.list_facts(subject="self")
         assert any("老师" in f["content"] for f in facts)   # 编造已固化
+        await app.terminate()
+    run(go())
+
+
+def test_life_block_carries_no_persona(app_factory):
+    """人设由 AstrBot 人格负责：注入块里不该出现身份/性格/社交圈的重复定义。"""
+    async def go():
+        app = app_factory()
+        await app.initialize()
+        block = await app.build_life_block("在干嘛")
+        for banned in ("【你是谁】", "【你的性格】", "【你的圈子】", "你不是助手",
+                       app.profile.name, "插画师", "香菜"):
+            assert banned not in block, f"生命块里不该有人设内容：{banned}"
+        for needed in ("【此刻】", "铁律", "内部标记"):
+            assert needed in block
+        # 关系阶段与称呼是运行期状态，仍然要带
+        assert app.profile.call_me in block
         await app.terminate()
     run(go())
 

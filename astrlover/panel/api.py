@@ -11,7 +11,7 @@ import yaml
 from astrbot.api import logger
 from astrbot.api.web import error_response, file_response, json_response, request
 
-from ..persona.profile import Profile
+from ..persona.profile import LifeProfile
 
 P = "astrlover"
 
@@ -23,8 +23,8 @@ class PanelApi:
     def register(self):
         reg = self.app.context.register_web_api
         reg(f"/{P}/overview", self.overview, ["GET"], "运行总览")
-        reg(f"/{P}/profile", self.get_profile, ["GET"], "读取生命档案")
-        reg(f"/{P}/profile/save", self.save_profile, ["POST"], "保存生命档案")
+        reg(f"/{P}/profile", self.get_profile, ["GET"], "读取生命参数")
+        reg(f"/{P}/profile/save", self.save_profile, ["POST"], "保存生命参数")
         reg(f"/{P}/diaries", self.diaries, ["GET"], "日记列表")
         reg(f"/{P}/facts", self.facts, ["GET"], "事实记忆")
         reg(f"/{P}/cheatsheet", self.cheatsheet, ["GET"], "核心小抄")
@@ -63,7 +63,7 @@ class PanelApi:
                 "activity": await app.life.current_activity(),
                 "sleeping": app.life.sleeping_now(),
                 "mood": await app.mood.prompt_text(),
-                "stage": app.dynamic.stage(str(app.profile.relationship.get("stage", ""))),
+                "stage": app.dynamic.stage(app.profile.stage),
                 "signature": app.dynamic.signature,
                 "avatar_desc": app.dynamic.avatar_desc,
                 "schedule": await app.dao.day_schedule(app.clock.today_str()),
@@ -72,7 +72,7 @@ class PanelApi:
 
     # ------------------------------------------------------------------
     async def get_profile(self):
-        p = self.app.persona_dir / "profile.yaml"
+        p = self.app.persona_dir / "life.yaml"
         d = self.app.persona_dir / "dynamic.yaml"
         return json_response({
             "profile": p.read_text(encoding="utf-8") if p.exists() else "",
@@ -84,11 +84,11 @@ class PanelApi:
         text = str(payload.get("profile") or "")
         try:
             data = yaml.safe_load(text) or {}
-            Profile(data)  # 校验必填
+            LifeProfile(data)  # 校验必填
         except Exception as e:
-            return error_response(f"档案格式不合法：{e}", status_code=400)
-        (self.app.persona_dir / "profile.yaml").write_text(text, encoding="utf-8")
-        self.app.profile = Profile(data)
+            return error_response(f"生命参数格式不合法：{e}", status_code=400)
+        (self.app.persona_dir / "life.yaml").write_text(text, encoding="utf-8")
+        self.app.profile = LifeProfile(data)
         return json_response({"saved": True})
 
     # ------------------------------------------------------------------
