@@ -8,7 +8,6 @@ WebUI 一切照旧；本插件在管线上做两件事：
 以及一个只认管理员的导演 bot（插件自持 PTB，与 AstrBot 平台无关）。
 """
 
-import shutil
 import time
 from pathlib import Path
 
@@ -36,9 +35,8 @@ from .llm import LLM
 from .memory.pipeline import MemoryPipeline
 from .memory.working import WorkingMemory
 from .panel.api import PanelApi
-from .persona.dynamic import DynamicState
-from .persona.profile import LifeProfile
 from .persona.prompt import build_life_block
+from .records import Records
 from .photos.archive import PhotoArchive
 from .photos.memory import PhotoMemory
 from .photos.sender import PhotoSender
@@ -65,7 +63,6 @@ class App:
         self.booted = False                 # 存储与 presence 子系统是否可用
 
         self.data_dir: Path = Path(StarTools.get_data_dir("astrlover"))
-        self.persona_dir = self.data_dir / "persona"
         self.vec_dir = self.data_dir / "vec"
         self.voice_dir = self.data_dir / "voice"
         self.gallery_dir = self.data_dir / "generated"
@@ -96,8 +93,7 @@ class App:
         self.state_target: str = ""
 
         # 生命层
-        self.profile: LifeProfile | None = None
-        self.dynamic: DynamicState | None = None
+        self.records: Records | None = None
         self.working: WorkingMemory | None = None
         self.memory: MemoryPipeline | None = None
         self.life: LifeEngine | None = None
@@ -112,7 +108,7 @@ class App:
     # 生命周期
     # ==================================================================
     async def initialize(self):
-        for d in (self.persona_dir, self.vec_dir, self.voice_dir, self.gallery_dir, self.export_dir):
+        for d in (self.vec_dir, self.voice_dir, self.gallery_dir, self.export_dir):
             d.mkdir(parents=True, exist_ok=True)
 
         self.clock = Clock(self.cfg.timezone)
@@ -122,6 +118,7 @@ class App:
         self.vectors = Vectors(self.vec_dir, self.context, self.cfg.embedding_provider_id)
         self.llm = LLM(self.context, self.cfg)
 
+        self.records = Records(self)
         self.vision = VisionClient(self.star_conf)
         self.album = Album(self)
         self.photos = PhotoArchive(self)
@@ -153,51 +150,15 @@ class App:
         logger.info("[AstrLover] 装配完成。")
 
     async def _init_life(self):
-        self.profile = LifeProfile.load(self._ensure_life_file())
-        self.dynamic = DynamicState(self.persona_dir / "dynamic.yaml")
-        self.dynamic.load()
-        if self.profile.met_on:
-            self.dynamic.add_milestone(self.profile.met_on, "认识纪念日")
-        if self.profile.anniversary:
-            self.dynamic.add_milestone(self.profile.anniversary, "在一起的纪念日")
-
+        """生命层：她是谁由人格负责，这里只装配记录与心跳相关的子系统。"""
         self.working = WorkingMemory(self.dao)
         self.memory = MemoryPipeline(self)
         self.life = LifeEngine(self)
         self.mood = MoodEngine(self.dao)
         self.proactive = Proactive(self)
         self.impulses = Impulses(self)
-        await self._seed_backstory()
         self.ready = True
-        logger.info(f"[AstrLover] 生命模拟层就绪：{self.profile.name} 醒来了。")
-
-    def _ensure_life_file(self) -> Path:
-        """生命参数文件。旧版 profile.yaml 存在时自动迁移一次：
-        结构化字段搬过来，人设文字丢弃（那部分现在归 AstrBot 人格）。"""
-        life_path = self.persona_dir / "life.yaml"
-        if life_path.exists():
-            return life_path
-        legacy = self.persona_dir / "profile.yaml"
-        if legacy.exists():
-            import yaml
-
-            data = yaml.safe_load(legacy.read_text(encoding="utf-8")) or {}
-            if "identity" in data or "personality" in data:   # 旧版嵌套结构
-                life_path.write_text(
-                    yaml.safe_dump(LifeProfile.from_legacy(data), allow_unicode=True, sort_keys=False),
-                    encoding="utf-8",
-                )
-                legacy.rename(self.persona_dir / "profile.yaml.bak")
-                logger.info(
-                    "[AstrLover] 旧版生命档案已迁移为 life.yaml（原文件存为 profile.yaml.bak）。"
-                    "人设文字请移到 AstrBot 人格设定里。"
-                )
-                return life_path
-            legacy.rename(life_path)   # 已经是新结构，改个名就行
-            return life_path
-        shutil.copy(_PLUGIN_ROOT / "examples" / "life.example.yaml", life_path)
-        logger.info(f"[AstrLover] 已生成生命参数模板：{life_path}")
-        return life_path
+        logger.info("[AstrLover] 生命模拟层就绪。")
 
     async def terminate(self):
         self.ready = self.booted = False
@@ -307,22 +268,40 @@ class App:
     # 提示词
     # ==================================================================
     async def build_life_block(self, query_text: str, extra_note: str = "") -> str:
-        clock_text = self.clock.describe_now(self.profile.met_on, self.profile.anniversary)
-        if specials := self.clock.upcoming_specials(
-            self.dynamic.milestones, self.profile.birthday, within_days=3
-        ):
-            clock_text += "（" + "；".join(specials) + "）"
+        """注入块：她的此刻 + 记忆 + 近况，全部来自记录。"""
+        milestones = await self.records.milestones()
         return build_life_block(
-            self.profile, self.dynamic,
-            clock_text=clock_text,
+            clock_text=self.clock.describe_now(milestones),
+            stage=await self.records.get_state("stage"),
             life_text=await self.life.prompt_text() if self.life else "",
             mood_text=await self.mood.prompt_text() if self.mood else "",
+            appearance_note=await self.records.get_state("appearance"),
             cheatsheet=await self.cheatsheet_text(),
             diaries_text=await self.memory.diaries_text(),
             memories_text=await self.memory.recall(query_text),
             events_text=await self.events_text(),
             extra_note=extra_note,
         )
+
+    async def appearance_text(self) -> str:
+        """生图用的外观基准。第一次要用时让她自己描述一次，存成记录；
+        之后可以 /rec set appearance 改，剪头发之类的演变也写回这里。"""
+        if text := await self.records.get_state("appearance"):
+            return text
+        if not self.state_target:
+            return ""
+        try:
+            text = await self.bridge.generate(
+                "用一句话客观描述你的长相、身材和常穿的风格（发型发色、五官特点、身高体型、"
+                "穿衣风格），供画像参考。只输出这一句，不要解释。", instruct="",
+            )
+        except Exception as e:
+            logger.warning(f"[AstrLover] 外观基准生成失败：{e}")
+            return ""
+        text = text.strip()[:200]
+        await self.records.set_state("appearance", text)
+        logger.info(f"[AstrLover] 外观基准已记下：{text}")
+        return text
 
     async def cheatsheet_text(self) -> str:
         row = await self.dao.latest_cheatsheet()
@@ -380,15 +359,6 @@ class App:
         if vec_id := await self.vectors.add_memory(note, {"type": "fact", "fact_id": fact_id}):
             await self.dao.set_fact_vec(fact_id, vec_id)
         logger.info(f"[AstrLover] 编造固化：{note}")
-
-    async def _seed_backstory(self):
-        if await self.dao.kv_get("backstory_seeded"):
-            return
-        for item in self.profile.backstory:
-            fact_id = await self.dao.add_fact("self", item, category="身世", source="init")
-            if vec_id := await self.vectors.add_memory(item, {"type": "fact", "fact_id": fact_id}):
-                await self.dao.set_fact_vec(fact_id, vec_id)
-        await self.dao.kv_set("backstory_seeded", 1)
 
     # ==================================================================
     # 控制台委托：相册 / 视觉 / 状态
@@ -509,9 +479,9 @@ class App:
         lines = ["🌸 AstrLover 状态", ""]
         lines.append(f"🔗 绑定会话：{self.state_target or '（未绑定，/umo 看、/link 绑）'}")
         if self.ready:
-            lines.append(self.clock.describe_now(self.profile.met_on, self.profile.anniversary))
+            lines.append(self.clock.describe_now(await self.records.milestones()))
             cur = await self.life.current_activity()
-            lines.append(f"🧍 此刻：{cur}" + ("（睡眠时段）" if self.life.sleeping_now() else ""))
+            lines.append(f"🧍 此刻：{cur}" + ("（睡眠时段）" if await self.life.sleeping_now() else ""))
             if sched := await self.dao.day_schedule(self.clock.today_str()):
                 lines.append("📅 " + "；".join(f"{s['start_hm']} {s['activity']}[{s['status']}]" for s in sched))
             lines.append(f"💭 {await self.mood.prompt_text() or '心情平静。'}")
@@ -522,6 +492,8 @@ class App:
                 f"🧠 记忆：事实 {facts} 条 · 小抄 v{sheet['version'] if sheet else 0} · "
                 f"最近日记 {diaries[0]['date'] if diaries else '（还没写过）'}"
             )
+            if stage := await self.records.get_state("stage"):
+                lines.append(f"💞 关系阶段：{stage}")
         else:
             lines.append("（生命模拟层未启用）")
         st = await self.album.stats()

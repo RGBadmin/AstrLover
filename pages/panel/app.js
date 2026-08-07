@@ -86,28 +86,62 @@ async function renderOverview() {
   );
 }
 
-/* ================= 生命参数 ================= */
-async function renderPersona() {
-  const d = await call(() => bridge.apiGet("profile"));
-  const ta = el("textarea", {}, d.profile || "");
-  ta.value = d.profile || "";
-  const dyn = el("textarea", { readonly: "readonly", style: "min-height:180px" });
-  dyn.value = d.dynamic || "";
+/* ================= 记录 ================= */
+const REC_KINDS = [
+  ["f", "事实"], ["e", "事件"], ["s", "日程"], ["m", "纪念日"],
+  ["p", "排期"], ["o", "情绪"], ["d", "日记"],
+];
+
+async function renderRecords() {
+  const sel = el("select", {});
+  for (const [v, label] of REC_KINDS) sel.append(el("option", { value: v }, label));
+  const body = el("pre", { class: "list-item", style: "white-space:pre-wrap" });
+  const addKind = el("select", {});
+  for (const [v, label] of [["f", "事实"], ["e", "事件"], ["m", "纪念日"], ["s", "日程"]]) {
+    addKind.append(el("option", { value: v }, label));
+  }
+  const addText = el("input", { type: "text", placeholder: "内容（纪念日：2026-04-20 认识的日子 since）" });
+  const ridInput = el("input", { type: "text", placeholder: "编号 如 f12", style: "min-width:110px" });
+  const editText = el("input", { type: "text", placeholder: "改成什么（留空则删除）" });
+
+  const load = async () => {
+    const d = await call(() => bridge.apiGet("records", { kind: sel.value, limit: 60 }));
+    body.textContent = d.text || "（空）";
+  };
+  const mutate = async (payload) => {
+    const r = await call(() => bridge.apiPost("records/mutate", payload));
+    toast(r.message || "已处理");
+    load();
+  };
+
+  sel.addEventListener("change", load);
   view.replaceChildren(
     el("div", { class: "toolbar" }, [
+      sel,
+      el("button", { class: "ghost", onclick: load }, "刷新"),
+      el("span", { class: "meta" }, "她是谁写在 AstrBot 人格里；这里是随时间生长的记录。"),
+    ]),
+    el("div", { class: "toolbar" }, [
+      addKind, addText,
       el("button", {
         class: "action",
-        onclick: async () => {
-          await call(() => bridge.apiPost("profile/save", { profile: ta.value }));
-          toast("已保存并热加载");
-        },
-      }, "保存生命参数"),
-      el("span", { class: "meta" }, "作息、纪念日、外观基准、身世。人设写在 AstrBot 人格设定里。下方为系统演化的动态层（只读）。"),
+        onclick: () => mutate({ op: "add", kind: addKind.value, text: addText.value }),
+      }, "添加"),
     ]),
-    ta,
-    el("h3", {}, "动态层 dynamic.yaml"),
-    dyn,
+    el("div", { class: "toolbar" }, [
+      ridInput, editText,
+      el("button", {
+        class: "ghost",
+        onclick: () => mutate(
+          editText.value.trim()
+            ? { op: "edit", rid: ridInput.value, text: editText.value }
+            : { op: "del", rid: ridInput.value },
+        ),
+      }, "改 / 删"),
+    ]),
+    body,
   );
+  await load();
 }
 
 /* ================= 日记 ================= */
@@ -219,7 +253,7 @@ async function renderPlans() {
 /* ================= 路由 ================= */
 const routes = {
   overview: renderOverview,
-  persona: renderPersona,
+  records: renderRecords,
   diary: renderDiary,
   memory: renderMemory,
   chat: renderChat,

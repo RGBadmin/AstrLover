@@ -348,7 +348,7 @@
   "life": {
     "description": "⑧ 生命模拟",
     "type": "object",
-    "hint": "她是谁、什么性格由 AstrBot 人格设定负责；这里只放人格写不了的：作息、纪念日、外观基准、身世条目。",
+    "hint": "她是谁、什么性格由 AstrBot 人格设定负责；插件只维护记录（日程/记忆/日记/事件/纪念日），用 /rec 增删改。",
     "items": {
       "life_enabled": {
         "description": "启用生命模拟层",

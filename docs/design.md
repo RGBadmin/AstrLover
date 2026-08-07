@@ -46,9 +46,10 @@ astrlover/
 ├── presence/            moments（发布/时间线注入）· profile（头像/签名/表情）· limits（频控）
 ├── director/            bot（PTB 传输层）· console（命令）· bridge（说话/写历史/按人格生成）
 ├── heart/               heartbeat（心跳）· proactive（意愿式主动）· impulses（生活冲动）
-├── life/                clock（时间感知）· engine（日程）· mood（情绪半衰期）
+├── life/                clock（时间感知）· engine（日程自生成+作息读记录）· mood（情绪半衰期）
 ├── memory/              pipeline（事实/小抄/日记/周记/召回）· working（对话素材）
-├── persona/             profile（生命参数）· dynamic（演化状态）· prompt（生命块组装）
+├── persona/prompt.py    注入块组装（人设不在这里）
+├── records.py           统一记录门面：增删改 + 生命周期清理
 ├── imagegen/            三后端 + 提示词构建（锚点图保一致性）
 ├── voice/               TTS → ogg 语音条
 ├── panel/ + pages/panel Web 面板（Plugin Pages + register_web_api）
@@ -85,19 +86,29 @@ AstrBot 本来就带时间，不重复打）；她模仿上下文自写的时间
 **D8 频控只约束自主行为**：手动指令随时可用、不消耗配额、不重置计时；
 触发限制时返回给她一句能读懂的话，她就不会反复重试。
 
-**D9 人设只有一个来源**：她是谁、什么性格、怎么说话、有哪些朋友全部由
-AstrBot 人格设定负责；插件的生命块只注入人格写不了的——此刻（时间/日程/心情）、
-记忆（小抄/日记/召回）、她做过但他不知道的事、以及 P1 铁律（产品承诺，
-不让人格覆盖）。life.yaml 只存代码消费的结构化字段：name/call_me、
-生日与纪念日、外观基准（生图锚）、身世条目（播种进事实层）、作息（心跳地基）。
+**D9 人设只有一个来源，插件只管记录**：她是谁、什么性格、怎么说话、
+有哪些朋友、几点上班——全部在 AstrBot 人格设定里，每次生成实时读取，
+改了立刻生效。插件不复制、不提取、不缓存人设（提取不可靠，且提取出来
+就成了会过期的第二事实源）。插件维护的全是随时间生长的**记录**：
+
+  日程 她每天自己排（人格在上下文里，她知道自己几点起、哪天休息）
+  事实/日记/事件/纪念日/排期/情绪 + 演化状态（关系阶段/签名/外观基准）
+
+每类记录都有「自创建 → 自销毁」的生命周期，也都能手动增删改
+（控制台 /rec、面板记录页），编号带前缀 f12 / e5 / m1。
+
+**作息为什么不做配置**：从自由文本稳定提取不出来，提取出来还会跟人格
+脱钩。改成她每天自己排一次日程记录——排错了直接改那条记录，
+人设改了第二天自动跟上。心跳只读记录，没有记录就不做作息假设。
 
 **D10 生命层可整个关掉**：`life_enabled=false` 时 `App.ready=False`，
-presence 能力照常工作；生图在无生命参数时退化为纯情境描述。
+presence 能力照常工作；生图在没有外观记录时退化为纯情境描述。
 
 ## 四、数据模型（astrlover.db）
 
 `album_images`（相册：路径/分类/拍摄时间/描述/分级/季节/状态/失败数/向量标记/发送记录）
 `photo_archive`（聊天图片：sha/文件/首见时间/目录层/细节层）
+`milestones`（纪念日：anniversary 每年 / since 算天数 / once 一次性）
 `facts`（可失效原子事实）· `diary`（daily/weekly）· `events`（内容/动机/提及状态）
 `schedule`（当日日程）· `mood`（强度+半衰期）· `cheatsheet`（版本化小抄）
 `pending_actions`（排期）· `chat_log`（恋人对话素材）· `kvmisc`（游标/计数/动态列表）
@@ -107,6 +118,6 @@ presence 能力照常工作；生图在无生命参数时退化为纯情境描�
 
 ## 五、测试
 
-`python -m pytest tests` —— 54 项，不需要安装 AstrBot：
+`python -m pytest tests` —— 57 项，不需要安装 AstrBot：
 `conftest.py` 提供 astrbot 桩模块，`test_smoke_app.py` 用假 Context 真正启动
 App 跑通装配、钩子注入、相册扫描检索、图片折叠、控制台命令与全部降级路径。

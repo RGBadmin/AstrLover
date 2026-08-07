@@ -51,29 +51,35 @@ class Heartbeat:
             for row in await app.dao.due_actions():
                 await app.actions.execute(row)
 
+        # 2. 记录自销毁：完成的、过期的自己消失（每天一次）
+        today = app.clock.today_str()
+        if await app.dao.kv_get("cleanup_day", "") != today:
+            await app.dao.kv_set("cleanup_day", today)
+            await app.records.cleanup()
+
         if not app.ready:
             self._ticks += 1
             return
 
-        # 2. 生活推进（纯代码，零 token）
+        # 3. 生活推进：今天没日程她自己排一个，然后按时间推进
         await app.life.ensure_today_plan()
         await app.life.advance()
 
-        # 3. 记忆沉淀（对话空闲时）
+        # 4. 记忆沉淀（对话空闲时）
         await app.memory.maybe_consolidate()
 
-        # 4. 日记 / 周记
-        if due := app.life.diary_due():
+        # 5. 日记 / 周记
+        if due := await app.life.diary_due():
             await app.memory.write_daily_diary(due)
         now = app.clock.now()
         if now.weekday() == 6 and now.hour >= 21:
             await app.memory.write_weekly(app.clock.week_str())
 
-        # 5. 主动消息（意愿驱动）
+        # 6. 主动消息（意愿驱动）
         if app.proactive:
             await app.proactive.tick()
 
-        # 6. 生活冲动：发动态/换头像/改签名
+        # 7. 生活冲动：发动态/换头像/改签名
         if app.impulses:
             await app.impulses.maybe_fire()
 

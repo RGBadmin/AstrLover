@@ -123,46 +123,52 @@ class Clock:
         d = self._parse_date(s)
         return (self.today() - d).days if d else None
 
-    def upcoming_specials(self, milestones: list[dict], birthday: str, within_days: int = 3) -> list[str]:
-        """今天或近几天内的特殊日子（周年按月日循环）。"""
+    def upcoming_specials(self, milestones: list[dict], within_days: int = 3) -> list[str]:
+        """今天或近几天的特殊日子。milestones 是记录行：
+        kind=anniversary 每年循环 / since 只算天数 / once 一次性。"""
         today = self.today()
         found: list[str] = []
-
-        def check_annual(month: int, day: int, title: str):
-            for offset in range(within_days + 1):
-                d = today + timedelta(days=offset)
-                if d.month == month and d.day == day:
-                    when = "今天" if offset == 0 else f"{offset}天后"
-                    found.append(f"{when}是{title}")
-                    return
-
-        bd = self._parse_date(birthday)
-        if bd:
-            check_annual(bd.month, bd.day, "你的生日")
         for m in milestones or []:
-            md = self._parse_date(m.get("date", ""))
+            md = self._parse_date(str(m.get("date", "")))
             if not md:
                 continue
-            if m.get("recurring", True):
-                check_annual(md.month, md.day, str(m.get("title", "纪念日")))
-            elif md == today:
-                found.append(f"今天是{m.get('title', '纪念日')}")
+            title = str(m.get("title") or "纪念日")
+            kind = str(m.get("kind") or "anniversary")
+            if kind == "since":
+                continue          # 这类只用来算「第 N 天」，不当特殊日子提醒
+            if kind == "once":
+                if md == today:
+                    found.append(f"今天是{title}")
+                continue
+            for offset in range(within_days + 1):
+                d = today + timedelta(days=offset)
+                if (d.month, d.day) == (md.month, md.day):
+                    found.append(("今天是" if offset == 0 else f"{offset}天后是") + title)
+                    break
         return found
 
-    def describe_now(self, met_on: str = "", anniversary: str = "") -> str:
-        """给 system prompt 的时间感知块。"""
+    def since_lines(self, milestones: list[dict]) -> list[str]:
+        """kind=since 的记录 → 「认识第 N 天」这种。"""
+        out = []
+        for m in milestones or []:
+            if str(m.get("kind")) != "since":
+                continue
+            days = self.days_since(str(m.get("date", "")))
+            if days is not None and days >= 0:
+                out.append(f"{m.get('title') or '纪念日'}第 {days + 1} 天")
+        return out
+
+    def describe_now(self, milestones: list[dict] | None = None) -> str:
+        """给注入块的时间感知：现在几点、什么日子、认识第几天。"""
         n = self.now()
         lines = [
             f"现在是{n.year}年{n.month}月{n.day}日 {self.weekday_cn()} "
             f"{n.hour:02d}:{n.minute:02d}（{self.time_slot()}）。"
         ]
-        fests = self.festivals_on(n.date())
-        if fests:
+        if fests := self.festivals_on(n.date()):
             lines.append("今天是" + "、".join(fests) + "。")
-        met_days = self.days_since(met_on)
-        if met_days is not None and met_days >= 0:
-            lines.append(f"你们认识第{met_days + 1}天。")
-        ann_days = self.days_since(anniversary)
-        if ann_days is not None and ann_days >= 0:
-            lines.append(f"确定关系第{ann_days + 1}天。")
+        for line in self.since_lines(milestones or []):
+            lines.append(line + "。")
+        if specials := self.upcoming_specials(milestones or [], within_days=3):
+            lines.append("；".join(specials) + "。")
         return "".join(lines)

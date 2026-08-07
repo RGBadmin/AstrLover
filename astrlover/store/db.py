@@ -1,14 +1,16 @@
 """SQLite 存储：她的记忆、日记、人生的落地层。
 
-- aiosqlite（AstrBot 主程序自带依赖），WAL 模式；
-- 版本化迁移：schema_version 存于 meta 表，向后兼容升级。
+aiosqlite（AstrBot 主程序自带依赖），WAL 模式。
+
+v1.0 之前不做数据迁移：schema 变了就删掉 astrlover.db 重来，
+表结构改起来不用背兼容包袱。schema_version 只用于排障时对版本。
 """
 
 from pathlib import Path
 
 import aiosqlite
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -69,6 +71,7 @@ CREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts);
 CREATE TABLE IF NOT EXISTS schedule (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     date     TEXT NOT NULL,
+    kind     TEXT NOT NULL DEFAULT 'activity', -- activity / wake / sleep
     start_hm TEXT NOT NULL,
     end_hm   TEXT NOT NULL,
     activity TEXT NOT NULL,
@@ -139,7 +142,18 @@ CREATE TABLE IF NOT EXISTS photo_archive (
     detail_fail INTEGER NOT NULL DEFAULT 0
 );
 
--- 杂项键值（游标、计数器）
+-- 纪念日（A12）：她自己记的、你手动加的，都在这
+CREATE TABLE IF NOT EXISTS milestones (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    date       TEXT NOT NULL,            -- YYYY-MM-DD
+    title      TEXT NOT NULL,
+    kind       TEXT NOT NULL DEFAULT 'anniversary', -- anniversary(每年)/since(算天数)/once(一次性)
+    source     TEXT NOT NULL DEFAULT 'user',        -- user/self
+    created_ts INTEGER NOT NULL,
+    UNIQUE (date, title)
+);
+
+-- 杂项键值（游标、计数器、演化状态）
 CREATE TABLE IF NOT EXISTS kvmisc (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -160,7 +174,8 @@ class Database:
         await self.conn.execute("PRAGMA busy_timeout=5000")
         await self.conn.executescript(_SCHEMA)
         await self.conn.execute(
-            "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)",
+            "INSERT INTO meta(key, value) VALUES ('schema_version', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (str(SCHEMA_VERSION),),
         )
         await self.conn.commit()

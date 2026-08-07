@@ -74,13 +74,13 @@ class Proactive:
         if last_fire and (now - last_fire) / 60 < gap_min:
             return None
 
-        sleeping = app.life.sleeping_now() if app.life else False
-        in_goodnight = self._window_goodnight()
+        sleeping = await app.life.sleeping_now() if app.life else False
+        in_goodnight = await self._window_goodnight()
         if sleeping and not in_goodnight:
             return None
 
         score, reasons = 0.0, []
-        if self._window_morning() and not await self._flag("morning"):
+        if await self._window_morning() and not await self._flag("morning"):
             score += 0.45
             reasons.append("morning")
         if in_goodnight and not await self._flag("goodnight"):
@@ -105,15 +105,19 @@ class Proactive:
             score += 0.35
             reasons.append("share")
 
-        specials = app.clock.upcoming_specials(app.dynamic.milestones, app.profile.birthday, 0)
+        specials = app.clock.upcoming_specials(await app.records.milestones(), 0)
         fests = app.clock.festivals_on(app.clock.today())
         if (specials or fests) and not await self._flag("special"):
             score += 0.4
             reasons.append("special")
-        met = app.clock.days_since(app.profile.met_on)
-        if met is not None and (met + 1) % 100 == 0 and not await self._flag("milestone"):
-            score += 0.5
-            reasons.append("milestone")
+        for m in await app.records.milestones():
+            if str(m.get("kind")) != "since":
+                continue
+            days = app.clock.days_since(str(m.get("date", "")))
+            if days is not None and (days + 1) % 100 == 0 and not await self._flag("milestone"):
+                score += 0.5
+                reasons.append("milestone")
+                break
 
         if app.mood:
             for m in await app.mood.current():
@@ -210,21 +214,25 @@ class Proactive:
         n = self.app.clock.now() if self.app.clock else datetime.now()
         return n.hour * 60 + n.minute
 
-    def _window_morning(self) -> bool:
+    async def _window_morning(self) -> bool:
         if not self.app.life:
             return False
-        (wh, wm), _ = self.app.life.wake_sleep()
-        start = wh * 60 + wm
+        wake, _ = await self.app.life.wake_sleep()
+        if wake is None:
+            return False
+        start = wake[0] * 60 + wake[1]
         return start <= self._now_min() <= start + 90
 
-    def _window_goodnight(self) -> bool:
+    async def _window_goodnight(self) -> bool:
         if not self.app.life:
             return False
-        _, (sh, sm) = self.app.life.wake_sleep()
-        cur, sleep = self._now_min(), sh * 60 + sm
-        if sleep < 300:
-            return cur >= (sleep + 1440 - 40) % 1440 or cur < sleep
-        return sleep - 40 <= cur < sleep
+        _, sleep = await self.app.life.wake_sleep()
+        if sleep is None:
+            return False
+        cur, s = self._now_min(), sleep[0] * 60 + sleep[1]
+        if s < 300:
+            return cur >= (s + 1440 - 40) % 1440 or cur < s
+        return s - 40 <= cur < s
 
     def _window_meal(self) -> bool:
         cur = self._now_min()

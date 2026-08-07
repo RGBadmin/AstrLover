@@ -22,9 +22,9 @@ _NEGATIVE = (
 _QUALITY = "真实感照片，自然光影，手机随手拍的生活质感，同一位女生"
 
 
-def build_spec(profile, dynamic, situation: str, anchors: list[str]) -> PromptSpec:
-    """外观基准（生命参数）+ 当前演变（动态层）+ 情境 → 提示词。"""
-    appearance = profile.appearance_text(dynamic.appearance_state)
+def build_spec(appearance: str, situation: str, anchors: list[str]) -> PromptSpec:
+    """外观基准（记录，缺失时自动生成一次）+ 情境 → 提示词。"""
+    appearance = (appearance or "").strip()
     positive = "；".join(
         x for x in [
             f"人物：{appearance}" if appearance else "",

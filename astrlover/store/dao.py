@@ -144,8 +144,10 @@ class Dao:
         await self.db.execute("DELETE FROM schedule WHERE date=? AND status='planned'", (date,))
         for it in items:
             await self.db.execute(
-                "INSERT INTO schedule(date, start_hm, end_hm, activity, status, notes) VALUES (?,?,?,?,?,?)",
-                (date, it["start_hm"], it["end_hm"], it["activity"], it.get("status", "planned"), it.get("notes", "")),
+                "INSERT INTO schedule(date, kind, start_hm, end_hm, activity, status, notes) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (date, it.get("kind", "activity"), it["start_hm"], it["end_hm"],
+                 it["activity"], it.get("status", "planned"), it.get("notes", "")),
             )
 
     async def day_schedule(self, date: str) -> list[dict]:

@@ -96,8 +96,7 @@ def test_boot_and_teardown(app_factory):
         app = app_factory()
         await app.initialize()
         assert app.booted and app.ready
-        assert app.profile.name          # 生命参数模板已生成并加载
-        assert (app.persona_dir / "life.yaml").exists()
+        assert app.records is not None   # 记录门面就绪
         assert app.db.conn is not None
         # 面板路由已注册
         assert any("overview" in r for r in app.context.web_apis)
@@ -130,7 +129,6 @@ def test_hooks_survive_without_providers(app_factory):
         # 注入的是「此刻 + 记忆 + 铁律」，人设归 AstrBot 人格，这里不该重复
         assert "【此刻】" in injected
         assert "铁律" in injected
-        assert app.profile.name not in injected
 
         resp = _FakeResp('好呀<improv>我妈是老师</improv><img_note id="1">测试</img_note>')
         await app.on_llm_response(event, resp)
@@ -143,18 +141,78 @@ def test_hooks_survive_without_providers(app_factory):
 
 
 def test_life_block_carries_no_persona(app_factory):
-    """人设由 AstrBot 人格负责：注入块里不该出现身份/性格/社交圈的重复定义。"""
+    """人设由 AstrBot 人格负责：注入块里不该出现身份/性格的定义。"""
     async def go():
         app = app_factory()
         await app.initialize()
         block = await app.build_life_block("在干嘛")
-        for banned in ("【你是谁】", "【你的性格】", "【你的圈子】", "你不是助手",
-                       app.profile.name, "插画师", "香菜"):
-            assert banned not in block, f"生命块里不该有人设内容：{banned}"
+        for banned in ("【你是谁】", "【你的性格】", "【你的圈子】", "你不是助手"):
+            assert banned not in block, f"注入块里不该有人设内容：{banned}"
         for needed in ("【此刻】", "铁律", "内部标记"):
             assert needed in block
-        # 关系阶段与称呼是运行期状态，仍然要带
-        assert app.profile.call_me in block
+        await app.terminate()
+    run(go())
+
+
+def test_records_crud_and_cleanup(app_factory):
+    """记录：能手动增删改，完成/过期的自己消失。"""
+    async def go():
+        import time as _t
+
+        app = app_factory()
+        await app.initialize()
+        r = app.records
+
+        # 增：事实 / 纪念日 / 事件
+        out = await r.add("f", "user 他不吃香菜")
+        assert out.startswith("记下了 f")
+        assert "他不吃香菜" in await r.listing("f")
+        assert "记下了 m" in await r.add("m", "2026-04-20 认识的日子 since")
+        milestones = await r.milestones()
+        assert milestones[0]["kind"] == "since"
+        eid = await app.dao.add_event("life", "去了咖啡店", motivation="")
+
+        # 改
+        assert "改成" in await r.edit("f1", "他其实爱吃香菜了")
+        assert "爱吃香菜" in await r.listing("f")
+        assert "没有 f99" in await r.edit("f99", "x")
+
+        # 「认识第 N 天」进注入块
+        block = await app.build_life_block("在干嘛")
+        assert "认识的日子第" in block
+
+        # 删
+        assert "已删除" in await r.delete(f"e{eid}")
+        assert "去了咖啡店" not in await r.listing("e")
+
+        # 自销毁：过期事件、失效事实、消散的情绪
+        old_ts = int(_t.time()) - 40 * 86400
+        await app.dao.add_event("life", "很久以前的事", ts=old_ts)
+        await app.db.execute("UPDATE events SET mention_status='told' WHERE ts=?", (old_ts,))
+        await app.dao.add_event("life", "很久以前但还没提过的", ts=old_ts)
+        fid = await app.dao.add_fact("user", "过时的事实")
+        await app.db.execute("UPDATE facts SET status='expired', updated_ts=? WHERE id=?", (old_ts, fid))
+        await app.dao.add_mood("happy", 0.5)
+        await app.db.execute("UPDATE mood SET active=0")
+
+        gone = await r.cleanup()
+        assert gone.get("事件") == 1          # 只清已提过的
+        assert "很久以前但还没提过的" in await r.listing("e")   # 没提过的留着
+        assert gone.get("失效事实") == 1
+        assert gone.get("消散的情绪") == 1
+        await app.terminate()
+    run(go())
+
+
+def test_state_records(app_factory):
+    """单值状态可读可改，并进注入块。"""
+    async def go():
+        app = app_factory()
+        await app.initialize()
+        assert "关系阶段 已设为" in await app.records.set_state_cmd("stage", "稳定")
+        assert await app.records.get_state("stage") == "稳定"
+        assert "「稳定」阶段" in await app.build_life_block("在干嘛")
+        assert "可设的状态" in await app.records.set_state_cmd("不存在", "x")
         await app.terminate()
     run(go())
 

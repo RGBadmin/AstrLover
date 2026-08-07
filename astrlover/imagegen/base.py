@@ -71,18 +71,12 @@ class ImageGen:
         if not self.backends:
             return None
         app = self.app
-        anchors_dir = app.persona_dir / "anchors"
+        anchors_dir = app.data_dir / "anchors"
         anchor_paths = [
             str(p) for p in sorted(anchors_dir.glob("*"))
             if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
         ][:2] if anchors_dir.exists() else []
-        if app.profile is None:  # 生命层关掉时没有档案，用纯情境描述生成
-            from .prompt_builder import PromptSpec, _NEGATIVE
-
-            spec = PromptSpec(positive=situation, negative=_NEGATIVE,
-                              reference_images=anchor_paths, situation=situation)
-        else:
-            spec = build_spec(app.profile, app.dynamic, situation, anchor_paths)
+        spec = build_spec(await app.appearance_text(), situation, anchor_paths)
 
         # 优先落到 presence 相册目录，回流后可被她自己检索到
         album_dir = str(app.star_conf.get("gallery_dir") or "").strip()

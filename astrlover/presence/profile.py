@@ -71,8 +71,7 @@ class ProfileFace:
         if enforce_limits:
             await app.limits.mark_done("avatar")
         await app.dao.kv_set("avatar_file", str(path))
-        if app.dynamic:
-            app.dynamic.set_avatar_desc(path.stem)
+        await app.records.set_state("avatar", path.stem)
         await app.dao.add_event("avatar", f"换了头像：{path.name}", motivation="")
         logger.info(f"[AstrLover] 头像已换：{path.name}")
         return f"头像换好了（{path.name}）。可以顺口跟他说一声，也可以等他自己发现。"
@@ -97,8 +96,7 @@ class ProfileFace:
 
         if enforce_limits:
             await app.limits.mark_done("signature")
-        if app.dynamic:
-            app.dynamic.set_signature(text)
+        await app.records.set_state("signature", text)
         await app.dao.add_event("signature", f"把签名改成了「{text}」", motivation="")
         logger.info(f"[AstrLover] 签名已改：{text}")
         return f"签名改成「{text}」了。它会覆盖上一句、没有历史记录——想记录某件事那是动态的活儿。"

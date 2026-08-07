@@ -16,13 +16,13 @@ class Impulses:
 
     async def maybe_fire(self):
         app = self.app
-        if app.life and app.life.sleeping_now():
+        if app.life and await app.life.sleeping_now():
             return
         if not app.state_target:
             return  # 没绑定会话，借不到她的身份
         special = bool(
             app.clock.festivals_on(app.clock.today())
-            or app.clock.upcoming_specials(app.dynamic.milestones, app.profile.birthday, 0)
+            or app.clock.upcoming_specials(await app.records.milestones(), 0)
         )
         client = app.bridge.platform_client(app.state_target)
 

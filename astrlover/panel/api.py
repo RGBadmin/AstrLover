@@ -6,12 +6,8 @@
 
 import time
 
-import yaml
-
 from astrbot.api import logger
 from astrbot.api.web import error_response, file_response, json_response, request
-
-from ..persona.profile import LifeProfile
 
 P = "astrlover"
 
@@ -23,8 +19,8 @@ class PanelApi:
     def register(self):
         reg = self.app.context.register_web_api
         reg(f"/{P}/overview", self.overview, ["GET"], "运行总览")
-        reg(f"/{P}/profile", self.get_profile, ["GET"], "读取生命参数")
-        reg(f"/{P}/profile/save", self.save_profile, ["POST"], "保存生命参数")
+        reg(f"/{P}/records", self.records_list, ["GET"], "列出记录")
+        reg(f"/{P}/records/mutate", self.records_mutate, ["POST"], "增删改记录")
         reg(f"/{P}/diaries", self.diaries, ["GET"], "日记列表")
         reg(f"/{P}/facts", self.facts, ["GET"], "事实记忆")
         reg(f"/{P}/cheatsheet", self.cheatsheet, ["GET"], "核心小抄")
@@ -58,38 +54,38 @@ class PanelApi:
         }
         if app.ready:
             data.update({
-                "name": app.profile.name,
-                "now": app.clock.describe_now(app.profile.met_on, app.profile.anniversary),
+                "now": app.clock.describe_now(await app.records.milestones()),
                 "activity": await app.life.current_activity(),
-                "sleeping": app.life.sleeping_now(),
+                "sleeping": await app.life.sleeping_now(),
                 "mood": await app.mood.prompt_text(),
-                "stage": app.dynamic.stage(app.profile.stage),
-                "signature": app.dynamic.signature,
-                "avatar_desc": app.dynamic.avatar_desc,
+                "stage": await app.records.get_state("stage"),
+                "signature": await app.records.get_state("signature"),
+                "avatar_desc": await app.records.get_state("avatar"),
+                "appearance": await app.records.get_state("appearance"),
                 "schedule": await app.dao.day_schedule(app.clock.today_str()),
             })
         return json_response(data)
 
     # ------------------------------------------------------------------
-    async def get_profile(self):
-        p = self.app.persona_dir / "life.yaml"
-        d = self.app.persona_dir / "dynamic.yaml"
-        return json_response({
-            "profile": p.read_text(encoding="utf-8") if p.exists() else "",
-            "dynamic": d.read_text(encoding="utf-8") if d.exists() else "",
-        })
+    async def records_list(self):
+        kind = request.query.get("kind", "f")
+        limit = request.query.get("limit", 50, type=int)
+        return json_response({"text": await self.app.records.listing(kind, limit)})
 
-    async def save_profile(self):
+    async def records_mutate(self):
         payload = await request.json(default={})
-        text = str(payload.get("profile") or "")
-        try:
-            data = yaml.safe_load(text) or {}
-            LifeProfile(data)  # 校验必填
-        except Exception as e:
-            return error_response(f"生命参数格式不合法：{e}", status_code=400)
-        (self.app.persona_dir / "life.yaml").write_text(text, encoding="utf-8")
-        self.app.profile = LifeProfile(data)
-        return json_response({"saved": True})
+        op = str(payload.get("op") or "")
+        if op == "add":
+            out = await self.app.records.add(str(payload.get("kind") or ""), str(payload.get("text") or ""))
+        elif op == "edit":
+            out = await self.app.records.edit(str(payload.get("rid") or ""), str(payload.get("text") or ""))
+        elif op == "del":
+            out = await self.app.records.delete(str(payload.get("rid") or ""))
+        elif op == "state":
+            out = await self.app.records.set_state_cmd(str(payload.get("key") or ""), str(payload.get("text") or ""))
+        else:
+            return error_response("op 必须是 add/edit/del/state")
+        return json_response({"message": out})
 
     # ------------------------------------------------------------------
     async def diaries(self):

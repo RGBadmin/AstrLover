@@ -1,148 +1,188 @@
-"""A4 虚拟生活引擎：她的人生在你不在的时候也在继续。
+"""她的一天：日程由她自己排，不由配置定义。
 
-- 每天按作息与活动池生成日程（纯代码，零 token）；
-- 心跳推进日程状态；完成的活动概率性沉淀为生活事件（叙事素材）；
-- "此刻在干什么"供对话上下文、回复节奏、即时自拍（A10）取用；
-- 叙事连续性：日程一旦生成便固定，当天不再随机变化。
+为什么不做成配置：作息写在人格里（「工作日早8:00起床，17:30下班，每周日单休」），
+从自由文本里稳定提取不出来，提取出来还会跟人格脱钩——你改了人设，参数就过期了。
+所以每天让她自己排一次明天：人格在上下文里，她当然知道自己几点起、哪天休息。
+排出来的是**记录**，不是配置——排错了你直接改那条（/rec edit s12 …）。
+
+心跳只读记录：几点睡几点醒来自当天的 wake/sleep 两条记录，
+没有记录就当她随时在线（不做假设，也不硬编码作息）。
 """
 
-import random
+import json
+import re
 from datetime import timedelta
 
 from astrbot.api import logger
 
+_PLAN_PROMPT = """现在给你自己排一下{when}（{date} {weekday}）的日程。
+按你真实的作息和工作安排来——今天是不是要上班、几点起、几点睡，你自己清楚。
+白天安排 1~3 件事就够，晚上一件，不用排满；具体到你会做什么（不是"工作"这种笼统的）。
 
-def _parse_hm(s: str, default: str) -> tuple[int, int]:
-    try:
-        h, m = str(s or default).split(":")
-        return int(h), int(m)
-    except (ValueError, AttributeError):
-        h, m = default.split(":")
-        return int(h), int(m)
+只输出 JSON，不要解释：
+{{"wake": "08:00", "sleep": "23:30", "items": [
+  {{"start": "09:00", "end": "12:00", "what": "在公司前台，上午来了两拨访客"}},
+  {{"start": "20:00", "end": "22:00", "what": "追剧"}}
+]}}"""
 
-
-def _hm_str(h: int, m: int) -> str:
-    return f"{h:02d}:{m:02d}"
+_WEEKDAY_CN = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
 
 class LifeEngine:
     def __init__(self, app):
         self.app = app
 
-    # ---- 作息 ----
-    def _routine(self, weekend: bool) -> dict:
-        r = self.app.profile.routine
-        return (r.get("weekend") if weekend else r.get("weekday")) or {}
-
-    def wake_sleep(self, weekend: bool | None = None) -> tuple[tuple[int, int], tuple[int, int]]:
-        if weekend is None:
-            weekend = self.app.clock.is_weekend()
-        r = self._routine(weekend)
-        return _parse_hm(r.get("wake"), "09:00"), _parse_hm(r.get("sleep"), "00:30")
-
-    def sleeping_now(self) -> bool:
-        now = self.app.clock.now()
-        (wh, wm), (sh, sm) = self.wake_sleep()
-        cur = now.hour * 60 + now.minute
-        wake, sleep = wh * 60 + wm, sh * 60 + sm
-        if sleep < wake:  # 跨零点睡（如 01:00 睡 09:30 醒）
-            return cur >= sleep and cur < wake
-        return cur >= sleep or cur < wake
-
-    # ---- 日程生成（纯代码）----
+    # ------------------------------------------------------------------ 生成
     async def ensure_today_plan(self):
+        """今天还没有日程就排一个。一天一次轻调用。"""
         app = self.app
         date = app.clock.today_str()
         if await app.dao.day_schedule(date):
             return
-        weekend = app.clock.is_weekend()
-        r = self._routine(weekend)
-        day_pool = [str(x) for x in (r.get("day_pool") or ["宅家休息"])]
-        night_pool = [str(x) for x in (r.get("night_pool") or ["刷手机放松"])]
-        (wh, wm), (sh, sm) = self.wake_sleep(weekend)
+        if not app.state_target:
+            return  # 没绑定会话，借不到她的人格
+        if await app.dao.kv_get(f"plan_tried:{date}"):
+            return  # 今天试过且失败了，别反复烧 token
+        await app.dao.kv_set(f"plan_tried:{date}", 1)
+        await self._generate(date, "今天")
 
-        rng = random.Random(f"{date}:{app.profile.name}")  # 当天固定，重启不变
-        items = []
-        # 白天 1~2 项
-        day_acts = rng.sample(day_pool, min(len(day_pool), rng.choice([1, 2])))
-        cursor = wh + 1
-        for act in day_acts:
-            dur = rng.choice([2, 3, 4])
-            start, end = cursor, min(cursor + dur, 18)
-            if start >= 18:
-                break
-            items.append({"start_hm": _hm_str(start, rng.choice([0, 30])), "end_hm": _hm_str(end, 0), "activity": act})
-            cursor = end + rng.choice([0, 1])
-        # 晚上 1 项
-        night_act = rng.choice(night_pool)
-        items.append({"start_hm": "20:00", "end_hm": "23:00", "activity": night_act})
+    async def _generate(self, date: str, when: str) -> bool:
+        app = self.app
+        weekday = _WEEKDAY_CN[app.clock.now().weekday()]
+        try:
+            raw = await app.bridge.generate(
+                _PLAN_PROMPT.format(when=when, date=date, weekday=weekday), instruct=""
+            )
+        except Exception as e:
+            logger.warning(f"[AstrLover] 排日程失败：{e}")
+            return False
+        data = _extract_json(raw)
+        if not isinstance(data, dict):
+            logger.warning(f"[AstrLover] 日程不是合法 JSON，跳过：{raw[:80]}")
+            return False
 
-        await app.dao.replace_day_schedule(date, items)
-        logger.info(f"[AstrLover] 生成 {date} 日程：" + "；".join(i["activity"] for i in items))
+        rows = []
+        if wake := _hm(data.get("wake")):
+            rows.append({"kind": "wake", "start_hm": wake, "end_hm": wake, "activity": "起床"})
+        for it in (data.get("items") or [])[:5]:
+            start, end = _hm(it.get("start")), _hm(it.get("end"))
+            what = str(it.get("what") or "").strip()
+            if start and end and what:
+                rows.append({"kind": "activity", "start_hm": start, "end_hm": end, "activity": what[:60]})
+        if sleep := _hm(data.get("sleep")):
+            rows.append({"kind": "sleep", "start_hm": sleep, "end_hm": sleep, "activity": "睡觉"})
+        if not rows:
+            return False
+        await app.dao.replace_day_schedule(date, rows)
+        logger.info(f"[AstrLover] {date} 的日程她自己排好了："
+                    + "；".join(r["activity"] for r in rows if r["kind"] == "activity"))
+        return True
 
-    # ---- 推进 ----
+    # ------------------------------------------------------------------ 读记录
+    async def _bound(self, date: str) -> tuple[str, str]:
+        """当天的起床/睡觉时间；没有记录返回空串。"""
+        rows = await self.app.dao.day_schedule(date)
+        wake = next((r["start_hm"] for r in rows if r["kind"] == "wake"), "")
+        sleep = next((r["start_hm"] for r in rows if r["kind"] == "sleep"), "")
+        return wake, sleep
+
+    async def wake_sleep(self) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
+        wake, sleep = await self._bound(self.app.clock.today_str())
+        return _parse_hm(wake), _parse_hm(sleep)
+
+    async def sleeping_now(self) -> bool:
+        """睡着了没有。没有日程记录时不做假设——当她醒着。"""
+        wake, sleep = await self.wake_sleep()
+        if wake is None or sleep is None:
+            return False
+        now = self.app.clock.now()
+        cur = now.hour * 60 + now.minute
+        w, s = wake[0] * 60 + wake[1], sleep[0] * 60 + sleep[1]
+        if s < w:                       # 跨零点睡（01:00 睡 / 09:00 醒）
+            return cur >= s and cur < w
+        return cur >= s or cur < w
+
+    async def current_activity(self) -> str:
+        app = self.app
+        if await self.sleeping_now():
+            return "睡觉"
+        now_hm = app.clock.now().strftime("%H:%M")
+        for r in await app.dao.day_schedule(app.clock.today_str()):
+            if r["kind"] == "activity" and r["start_hm"] <= now_hm < r["end_hm"] \
+                    and r["status"] != "cancelled":
+                return r["activity"]
+        return "闲着，刷刷手机"
+
+    # ------------------------------------------------------------------ 推进
     async def advance(self):
         app = self.app
         date = app.clock.today_str()
         now_hm = app.clock.now().strftime("%H:%M")
-        for item in await app.dao.day_schedule(date):
-            if item["status"] == "planned" and item["start_hm"] <= now_hm < item["end_hm"]:
-                await app.dao.set_schedule_status(item["id"], "ongoing")
-            elif item["status"] in ("planned", "ongoing") and now_hm >= item["end_hm"]:
-                await app.dao.set_schedule_status(item["id"], "done")
-                # 概率沉淀为生活事件：她的叙事素材（A2/A4）
-                if random.random() < 0.6:
-                    await app.dao.add_event(
-                        "life", f"{item['activity']}", motivation="", meta={"date": date}
-                    )
+        for r in await app.dao.day_schedule(date):
+            if r["kind"] != "activity":
+                continue
+            if r["status"] == "planned" and r["start_hm"] <= now_hm < r["end_hm"]:
+                await app.dao.set_schedule_status(r["id"], "ongoing")
+            elif r["status"] in ("planned", "ongoing") and now_hm >= r["end_hm"]:
+                await app.dao.set_schedule_status(r["id"], "done")
+                await app.dao.add_event("life", r["activity"], motivation="", meta={"date": date})
 
-    async def current_activity(self) -> str:
-        app = self.app
-        if self.sleeping_now():
-            return "睡觉"
-        date = app.clock.today_str()
-        now_hm = app.clock.now().strftime("%H:%M")
-        for item in await app.dao.day_schedule(date):
-            if item["start_hm"] <= now_hm < item["end_hm"] and item["status"] != "cancelled":
-                return item["activity"]
-        return "闲着，刷刷手机"
-
-    # ---- 供对话取用 ----
     async def prompt_text(self) -> str:
         app = self.app
-        date = app.clock.today_str()
-        sched = await app.dao.day_schedule(date)
-        plan = "；".join(
-            f"{s['start_hm']}~{s['end_hm']} {s['activity']}({s['status']})" for s in sched
-        )
-        cur = await self.current_activity()
-        lines = [f"你此刻：{cur}。"]
-        if plan:
+        rows = await app.dao.day_schedule(app.clock.today_str())
+        lines = [f"你此刻：{await self.current_activity()}。"]
+        if plan := "；".join(
+            f"{r['start_hm']}~{r['end_hm']} {r['activity']}({r['status']})"
+            for r in rows if r["kind"] == "activity"
+        ):
             lines.append(f"你今天的安排：{plan}。")
-        if self.sleeping_now():
-            lines.append("你本来已经睡下了，是被消息吵醒或恰好没睡着，语气应当带着困意。")
+        if await self.sleeping_now():
+            lines.append("你已经睡下了，是被消息吵醒或恰好没睡着，语气该带着困意。")
         return "\n".join(lines)
 
-    async def pre_reply_delay(self) -> float:
-        """回复节奏：睡着/忙碌时晚一点回，回来要有交代（由提示词层保证）。"""
-        if self.sleeping_now():
-            return random.uniform(20, 75)
-        cur = await self.current_activity()
-        if any(k in cur for k in ("洗澡", "开会", "对稿", "牙医")):
-            return random.uniform(15, 45)
-        return 0.0
-
-    # ---- 日记时机 ----
-    def diary_due(self) -> str | None:
-        """该写哪天的日记：睡前窗口写今天的；凌晨补昨天的。返回日期或 None。"""
+    # ------------------------------------------------------------------ 日记时机
+    async def diary_due(self) -> str | None:
+        """睡前写今天的；凌晨补昨天的。没有作息记录时按 23:40 兜底。"""
         app = self.app
         now = app.clock.now()
-        (_, _), (sh, sm) = self.wake_sleep()
-        # 统一在 23:40 后写"今天"；若作息睡得早（23:00 前），提前到睡前 20 分钟
-        due_min = min(23 * 60 + 40, sh * 60 + sm - 20) if sh >= 21 else 23 * 60 + 40
-        cur_min = now.hour * 60 + now.minute
-        if cur_min >= due_min:
+        cur = now.hour * 60 + now.minute
+        _wake, sleep = await self.wake_sleep()
+        due = min(23 * 60 + 40, sleep[0] * 60 + sleep[1] - 20) if sleep and sleep[0] >= 21 else 23 * 60 + 40
+        if cur >= due:
             return app.clock.today_str()
-        if now.hour >= 3:  # 凌晨之后兜底补昨天
+        if now.hour >= 3:
             return (app.clock.today() - timedelta(days=1)).isoformat()
         return None
+
+
+# ---------------------------------------------------------------------- 工具
+def _hm(v) -> str:
+    m = re.match(r"^\s*(\d{1,2}):(\d{2})", str(v or ""))
+    if not m:
+        return ""
+    h, mi = int(m.group(1)), int(m.group(2))
+    return f"{h:02d}:{mi:02d}" if 0 <= h < 24 and 0 <= mi < 60 else ""
+
+
+def _parse_hm(s: str) -> tuple[int, int] | None:
+    if not s:
+        return None
+    try:
+        h, m = s.split(":")
+        return int(h), int(m)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _extract_json(raw: str):
+    raw = re.sub(r"^```[a-zA-Z]*\s*|\s*```$", "", (raw or "").strip(), flags=re.S).strip()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        m = re.search(r"\{.*\}", raw, re.S)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except json.JSONDecodeError:
+                return None
+    return None

@@ -24,6 +24,7 @@ MENU = [
     ("reply", "解除静默，她重新开口"),
     ("proactive", "主动消息状态 · /proactive now 立即发"),
     ("status", "她的生命状态：此刻/日程/心情/记忆"),
+    ("rec", "记录：看/加/改/删 · /rec f · /rec add m 03-21 生日"),
     ("diary", "偷看日记 · /diary [日期]"),
     ("events", "她最近做的事"),
     ("plan", "定时编排 · /plan 20:00 /act 提醒他吃药"),
@@ -342,6 +343,45 @@ class DirectorConsole:
         elif silent > time.time():
             lines.append(f"⏸ 静默中，{int((silent - time.time()) // 60) + 1} 分钟后恢复")
         return "\n".join(lines)
+
+    async def cmd_rec(self, arg: str = "", chat_id=None) -> str:
+        """记录：看/加/改/删。用法：
+        /rec                    总览
+        /rec f | d | e | s | m | p | o     看某类（事实/日记/事件/日程/纪念日/排期/情绪）
+        /rec add f 他不吃香菜
+        /rec add m 2026-04-20 认识的日子 since
+        /rec add s 14:00-16:00 和小雅逛街
+        /rec edit f12 新内容
+        /rec del e5
+        /rec set stage 稳定      （可设：stage/appearance/signature/avatar）"""
+        app = self.app
+        if not app.records:
+            return "还没初始化好。"
+        parts = (arg or "").split(None, 1)
+        if not parts:
+            return await app.records.overview()
+        head = parts[0].lower()
+        rest = parts[1] if len(parts) > 1 else ""
+        if head == "add":
+            bits = rest.split(None, 1)
+            if len(bits) < 2:
+                return "用法：/rec add <类型> <内容>，如 /rec add f 他不吃香菜"
+            return await app.records.add(bits[0], bits[1])
+        if head in ("edit", "改"):
+            bits = rest.split(None, 1)
+            if len(bits) < 2:
+                return "用法：/rec edit f12 新内容"
+            return await app.records.edit(bits[0], bits[1])
+        if head in ("del", "delete", "rm", "删"):
+            if not rest.strip():
+                return "用法：/rec del f12"
+            return await app.records.delete(rest.strip())
+        if head == "set":
+            bits = rest.split(None, 1)
+            if len(bits) < 2:
+                return "用法：/rec set stage 稳定"
+            return await app.records.set_state_cmd(bits[0], bits[1])
+        return await app.records.listing(head, 30)
 
     async def cmd_help(self, arg: str = "", chat_id=None) -> str:
         return "指令一览：\n" + "\n".join(f"/{k} — {d}" for k, d in MENU)
