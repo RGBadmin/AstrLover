@@ -12,55 +12,6 @@ from pathlib import Path
 import pytest
 
 
-class _FakeConvManager:
-    def __init__(self, ctx):
-        self._ctx = ctx
-
-    async def get_curr_conversation_id(self, _umo):
-        return "cid-1"
-
-    async def get_conversation(self, _umo, _cid):
-        import json as _json
-        import types as _types
-        return _types.SimpleNamespace(history=_json.dumps(self._ctx.history), persona_id=None)
-
-    async def update_conversation(self, _umo, _cid, history=None):
-        if history is not None:
-            self._ctx.history = history
-
-    async def get_conversations(self, *_a, **_k):
-        return []
-
-
-class _FakeContext:
-    def __init__(self):
-        self.web_apis = []
-        self.registered_web_apis = []     # 路由表：面板端点测试按它逐个调用
-        self.history = []
-        self.conversation_manager = _FakeConvManager(self)
-
-    def register_web_api(self, route, handler, methods, desc):
-        self.web_apis.append(route)
-        self.registered_web_apis.append((route, handler))
-
-    def get_provider_by_id(self, _pid):
-        return None
-
-    def get_all_embedding_providers(self):
-        return []
-
-    def get_using_provider(self, **_kw):
-        return None
-
-    def get_platform_inst(self, _pid):
-        return None
-
-
-class _FakeStar:
-    def __init__(self, conf):
-        self.conf = conf
-
-
 class _FakeReq:
     def __init__(self, contexts=None):
         self.contexts = contexts or []
@@ -86,29 +37,6 @@ class _FakeEvent:
 class _FakeResp:
     def __init__(self, text):
         self.completion_text = text
-
-
-@pytest.fixture
-def app_factory(tmp_path, monkeypatch):
-    from astrlover import app as app_mod
-
-    star_tools = types.SimpleNamespace(get_data_dir=lambda _n: str(tmp_path / "data"))
-    monkeypatch.setattr(app_mod, "StarTools", star_tools)
-
-    def make(conf_overrides=None):
-        conf = {
-            "life_enabled": True,
-            "life_partner_id": "123",
-            "life_timezone": "Asia/Shanghai",
-            "console_token": "",            # 不起导演 bot
-            "gallery_dir": str(tmp_path / "album"),
-            "max_context_images": 1,
-        }
-        conf.update(conf_overrides or {})
-        star = _FakeStar(conf)
-        return app_mod.App(star=star, context=_FakeContext(), flat_conf=conf)
-
-    return make
 
 
 def run(coro):

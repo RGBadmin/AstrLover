@@ -106,6 +106,15 @@ class App:
     # ==================================================================
     # 生命周期
     # ==================================================================
+    def _clear_vec_dir(self):
+        n = 0
+        for p in self.vec_dir.glob("*"):
+            if p.is_file():
+                p.unlink(missing_ok=True)
+                n += 1
+        if n:
+            logger.warning(f"[AstrLover] 向量库已随数据库一起清空（{n} 个文件），相册会自动重跑索引。")
+
     async def initialize(self):
         for d in (self.vec_dir, self.voice_dir, self.gallery_dir, self.export_dir):
             d.mkdir(parents=True, exist_ok=True)
@@ -113,6 +122,9 @@ class App:
         self.clock = Clock(self.cfg.timezone)
         self.db = Database(self.data_dir / "astrlover.db")
         await self.db.open()
+        if self.db.was_reset:
+            # 向量库里存的是行 id，库重建了这些 id 全指空——一起清掉重跑索引
+            self._clear_vec_dir()
         self.dao = Dao(self.db)
         await self.conf.load(self.dao)
         self.vectors = Vectors(self.vec_dir, self.context, self.cfg.embedding_provider_id)

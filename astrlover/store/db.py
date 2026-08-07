@@ -2,15 +2,28 @@
 
 aiosqlite（AstrBot 主程序自带依赖），WAL 模式。
 
-v1.0 之前不做数据迁移：schema 变了就删掉 astrlover.db 重来，
-表结构改起来不用背兼容包袱。schema_version 只用于排障时对版本。
+v1.0 之前不做数据迁移：schema 变了就重建 astrlover.db，
+表结构改起来不用背兼容包袱。
+
+但"不迁移"不等于"不检查"——建表全是 CREATE TABLE IF NOT EXISTS，
+旧库里缺的列永远补不上，代码要到几小时后读到那张表才 KeyError，
+而且是在毫不相干的地方炸（面板、心跳、日程各炸一次）。
+所以开库先对 schema_version：对不上就把旧库挪到 .bak 重建，
+一次响亮的日志换掉一堆莫名其妙的崩溃。旧文件留着，随时能翻回去。
 """
 
+import sqlite3
+import time
 from pathlib import Path
 
 import aiosqlite
 
-SCHEMA_VERSION = 3
+from astrbot.api import logger
+
+# 4：schedule 加了 kind 列（wake/sleep/activity）。老库靠 CREATE TABLE
+# IF NOT EXISTS 补不上这列，必须重建——之前版本号一直没跟着改，所以旧库
+# 里存的也是 3，这次是把漏掉的那一跳补上。
+SCHEMA_VERSION = 4
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -154,9 +167,46 @@ class Database:
     def __init__(self, db_path: Path):
         self.path = db_path
         self.conn: aiosqlite.Connection | None = None
+        self.was_reset = False      # 本次开库是不是重建过（向量库要跟着重来）
+
+    # ------------------------------------------------------------------
+    def _existing_version(self) -> int | None:
+        """旧库的 schema_version。库不存在返回 None，读不出来当 0（老到没 meta 表）。"""
+        if not self.path.exists():
+            return None
+        conn = None
+        try:
+            conn = sqlite3.connect(self.path)
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key='schema_version'"
+            ).fetchone()
+            return int(row[0]) if row else 0
+        except Exception:
+            return 0
+        finally:
+            if conn is not None:
+                conn.close()
+
+    def _reset_if_stale(self):
+        old = self._existing_version()
+        if old is None or old == SCHEMA_VERSION:
+            return
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        # WAL 的三个文件要一起挪，只挪主库会让新库接上旧 -wal
+        for suffix in ("", "-wal", "-shm"):
+            p = self.path.with_name(self.path.name + suffix)
+            if p.exists():
+                p.rename(p.with_name(f"{p.name}.v{old}.{stamp}.bak"))
+        self.was_reset = True
+        logger.warning(
+            f"[AstrLover] 数据库是 v{old} 的、当前代码要 v{SCHEMA_VERSION}——"
+            f"v1.0 前不做迁移，已重建空库。旧库改名保留为 "
+            f"{self.path.name}.v{old}.{stamp}.bak，需要的话可以自己捞。"
+        )
 
     async def open(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._reset_if_stale()
         self.conn = await aiosqlite.connect(self.path)
         self.conn.row_factory = aiosqlite.Row
         await self.conn.execute("PRAGMA journal_mode=WAL")

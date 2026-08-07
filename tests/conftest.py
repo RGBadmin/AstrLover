@@ -114,3 +114,101 @@ def _install_astrbot_stub():
 
 
 _install_astrbot_stub()
+
+
+# ---------------------------------------------------------------------------
+# 共享 fixture：多个测试模块都要一个跑得起来的 App
+# ---------------------------------------------------------------------------
+import pytest  # noqa: E402
+
+
+class _FakeConvManager:
+    def __init__(self, ctx):
+        self._ctx = ctx
+
+    async def get_curr_conversation_id(self, _umo):
+        return "cid-1"
+
+    async def get_conversation(self, _umo, _cid):
+        import json as _json
+        import types as _types
+        return _types.SimpleNamespace(history=_json.dumps(self._ctx.history), persona_id=None)
+
+    async def update_conversation(self, _umo, _cid, history=None):
+        if history is not None:
+            self._ctx.history = history
+
+    async def get_conversations(self, *_a, **_k):
+        return []
+
+
+class _FakeContext:
+    def __init__(self):
+        self.web_apis = []
+        self.registered_web_apis = []     # 路由表：面板端点测试按它逐个调用
+        self.history = []
+        self.conversation_manager = _FakeConvManager(self)
+
+    def register_web_api(self, route, handler, methods, desc):
+        self.web_apis.append(route)
+        self.registered_web_apis.append((route, handler))
+
+    def get_provider_by_id(self, _pid):
+        return None
+
+    def get_all_embedding_providers(self):
+        return []
+
+    def get_using_provider(self, **_kw):
+        return None
+
+    def get_platform_inst(self, _pid):
+        return None
+
+
+class _FakeStar:
+    def __init__(self, conf):
+        self.conf = conf
+
+
+@pytest.fixture
+def app_factory(tmp_path, monkeypatch):
+    from astrlover import app as app_mod
+
+    star_tools = types.SimpleNamespace(get_data_dir=lambda _n: str(tmp_path / "data"))
+    monkeypatch.setattr(app_mod, "StarTools", star_tools)
+
+    def make(conf_overrides=None):
+        conf = {
+            "life_enabled": True,
+            "life_partner_id": "123",
+            "life_timezone": "Asia/Shanghai",
+            "console_token": "",            # 不起导演 bot
+            "gallery_dir": str(tmp_path / "album"),
+            "max_context_images": 1,
+        }
+        conf.update(conf_overrides or {})
+        star = _FakeStar(conf)
+        return app_mod.App(star=star, context=_FakeContext(), flat_conf=conf)
+
+    return make
+
+
+@pytest.fixture
+def scheduled_app(app_factory):
+    """带一天完整日程（起床/上班/睡觉）的 app。
+
+    空表读不到 schedule.kind 列——线上那三处 KeyError 只有在有数据时才现形。
+    """
+
+    async def build():
+        app = app_factory()
+        await app.initialize()
+        await app.dao.replace_day_schedule(app.clock.today_str(), [
+            {"kind": "wake", "start_hm": "08:00", "end_hm": "08:00", "activity": "起床"},
+            {"kind": "activity", "start_hm": "09:00", "end_hm": "18:00", "activity": "上班"},
+            {"kind": "sleep", "start_hm": "22:30", "end_hm": "22:30", "activity": "睡觉"},
+        ])
+        return app
+
+    return build

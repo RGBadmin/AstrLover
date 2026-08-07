@@ -10,7 +10,8 @@ import types
 
 import pytest
 
-from tests.test_smoke_app import _FakeContext, _FakeStar  # noqa: F401  复用假环境
+from conftest import _FakeContext, _FakeStar
+
 
 
 class _Query:
