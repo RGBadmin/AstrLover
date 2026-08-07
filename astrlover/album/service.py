@@ -15,7 +15,7 @@ class Album:
     def __init__(self, app):
         self.app = app
         self.store = AlbumStore(app.db)
-        self.scanner = AlbumScanner(self.store, lambda: app.star_conf.get("gallery_dir"))
+        self.scanner = AlbumScanner(self.store, lambda: app.conf.get("gallery_dir"))
         self.indexer = AlbumIndexer(app)
         self.embedder = AlbumEmbedder(app)
         self.search_engine = AlbumSearch(app)
@@ -38,7 +38,7 @@ class Album:
     # ------------------------------------------------------------------
     async def polish(self) -> str:
         """确定性清洗存量描述，不重跑索引：删字堆段、泛称改角色名、重解析标签。"""
-        subject = str(self.app.star_conf.get("subject_name") or "").strip()
+        subject = str(self.app.conf.get("subject_name") or "").strip()
         rows = await self.store.all_ok()
         changed = retag = 0
         for row in rows:
@@ -57,8 +57,8 @@ class Album:
 
     async def clean(self) -> str:
         """揪出拒答、思维链、过短的脏描述（不自动删，只报告）。"""
-        min_chars = int(self.app.star_conf.get("vision_min_chars", 0) or 0)
-        max_chars = max(100, int(self.app.star_conf.get("vision_max_chars", 600) or 600))
+        min_chars = int(self.app.conf.get("vision_min_chars", 0) or 0)
+        max_chars = max(100, int(self.app.conf.get("vision_max_chars", 600) or 600))
         rows = await self.store.all_ok()
         bad: list[str] = []
         for row in rows:

@@ -19,10 +19,10 @@ class DirectorBot:
 
     @property
     def configured(self) -> bool:
-        return bool(str(self.app.star_conf.get("console_token") or "").strip())
+        return bool(str(self.app.conf.get("console_token") or "").strip())
 
     def admins(self) -> list[str]:
-        raw = self.app.star_conf.get("console_admins")
+        raw = self.app.conf.get("console_admins")
         if isinstance(raw, list):
             return [str(x).strip() for x in raw if str(x).strip()]
         return [x.strip() for x in str(raw or "").replace("，", ",").split(",") if x.strip()]
@@ -35,8 +35,8 @@ class DirectorBot:
         try:
             from telegram.ext import ApplicationBuilder, MessageHandler, filters
 
-            builder = ApplicationBuilder().token(str(self.app.star_conf["console_token"]).strip())
-            if proxy := str(self.app.star_conf.get("console_proxy") or "").strip():
+            builder = ApplicationBuilder().token(str(self.app.conf["console_token"]).strip())
+            if proxy := str(self.app.conf.get("console_proxy") or "").strip():
                 builder = builder.proxy(proxy).get_updates_proxy(proxy)
             self.application = builder.build()
             self.application.add_handler(MessageHandler(filters.ALL, self._on_update))

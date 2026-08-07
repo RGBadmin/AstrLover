@@ -1,13 +1,13 @@
 """生命层配置视图：读插件压平后的扁平配置。
 
 分组只是配置页的排版，代码一律按扁平 key 读。
-presence 侧的配置直接用 app.star_conf[...]，不再包一层。
+presence 侧的配置直接用 app.conf[...]，不再包一层。
 """
 
 
 class Cfg:
-    def __init__(self, flat: dict):
-        self._c = flat or {}
+    def __init__(self, conf):
+        self._c = conf              # Settings：接线 + 数据库覆盖 + 默认值
 
     def _s(self, key: str, default: str = "") -> str:
         v = self._c.get(key, default)

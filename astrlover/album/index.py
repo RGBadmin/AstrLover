@@ -49,10 +49,10 @@ class AlbumIndexer:
         vision = app.vision
         if not vision.ready():
             return "视觉 API 未配置（vision 组三项：地址/Key/模型）"
-        subject = str(app.star_conf.get("subject_name") or "").strip()
-        end_mark = str(app.star_conf.get("vision_end_mark") or "").strip()
-        min_chars = int(app.star_conf.get("vision_min_chars", 0) or 0)
-        max_chars = max(100, int(app.star_conf.get("vision_max_chars", 600) or 600))
+        subject = str(app.conf.get("subject_name") or "").strip()
+        end_mark = str(app.conf.get("vision_end_mark") or "").strip()
+        min_chars = int(app.conf.get("vision_min_chars", 0) or 0)
+        max_chars = max(100, int(app.conf.get("vision_max_chars", 600) or 600))
 
         stat0 = (vision.stats.calls, vision.stats.blocked, vision.stats.hard, vision.stats.saved)
         done = failed = 0
@@ -93,7 +93,7 @@ class AlbumIndexer:
                     text, complete = validate.cut_at_end_mark(text, end_mark)
                     reason = "" if complete else "结束标记缺失（像是被截断）"
                     if not reason and vision.truncated(
-                        str(app.star_conf.get("vision_api_format") or "openai"), last
+                        str(app.conf.get("vision_api_format") or "openai"), last
                     ):
                         reason = "被 max_tokens 掐断"
                     if not reason:

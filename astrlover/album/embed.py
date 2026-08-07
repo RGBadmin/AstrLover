@@ -81,7 +81,7 @@ class AlbumEmbedder:
         if not await app.vectors.ensure():
             return "Embedding Provider 未配置或初始化失败（life_models 组）"
         done = 0
-        batch = max(4, min(64, int(app.star_conf.get("embed_batch", 16) or 16)))
+        batch = max(4, min(64, int(app.conf.get("embed_batch", 16) or 16)))
         try:
             while count is None or done < count:
                 limit = batch if count is None else min(batch, count - done)

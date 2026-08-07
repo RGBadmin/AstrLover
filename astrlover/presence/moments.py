@@ -35,7 +35,7 @@ class Moments:
 
     # ------------------------------------------------------------------
     def channel(self) -> str:
-        return str(self.app.star_conf.get("channel_id") or "").strip()
+        return str(self.app.conf.get("channel_id") or "").strip()
 
     async def _list(self) -> list[dict]:
         return await self.app.dao.kv_get("moments", []) or []
@@ -57,11 +57,11 @@ class Moments:
 
         if enforce_limits:
             if wait := await app.limits.cooldown_left(
-                "post", int(app.star_conf.get("post_cooldown_minutes", 180) or 180)
+                "post", int(app.conf.get("post_cooldown_minutes", 180) or 180)
             ):
                 return f"现在还发不了动态，距离上一条还差 {wait} 分钟。等会儿再说。"
             if await app.limits.daily_left(
-                "post", int(app.star_conf.get("post_daily_limit", 5) or 5)
+                "post", int(app.conf.get("post_daily_limit", 5) or 5)
             ) == 0:
                 return "今天的动态已经发够了，明天再发。"
 
@@ -132,12 +132,12 @@ class Moments:
     async def inject(self, req) -> tuple[int, int]:
         """把历史动态按时间插进 req.contexts。返回 (锚点数, 堆在末尾的条数)。"""
         app = self.app
-        if not app.star_conf.get("inject_history", True):
+        if not app.conf.get("inject_history", True):
             return 0, 0
         moments = await self._list()
         if not moments:
             return 0, 0
-        limit = int(app.star_conf.get("inject_history_limit", 0) or 0)
+        limit = int(app.conf.get("inject_history_limit", 0) or 0)
         selected = moments[-limit:] if limit > 0 else moments
 
         from ..photos.archive import context_time

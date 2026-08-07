@@ -30,8 +30,8 @@ class Tools:
         rows, report = await app.album.search(
             keywords=keywords, want=want, folder=folder, rating=rating,
             season=season, around=around, prefer_sent=prefer_sent or "fresh",
-            top_k=int(app.star_conf.get("gallery_top_k", 10) or 10),
-            fetch_k=int(app.star_conf.get("gallery_fetch_k", 60) or 60),
+            top_k=int(app.conf.get("gallery_top_k", 10) or 10),
+            fetch_k=int(app.conf.get("gallery_fetch_k", 60) or 60),
         )
         if not rows:
             hint = "相册里没有匹配的。"

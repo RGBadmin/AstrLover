@@ -86,6 +86,107 @@ async function renderOverview() {
   );
 }
 
+/* ================= 设置 ================= */
+async function renderSettings() {
+  const d = await call(() => bridge.apiGet("settings"));
+  const items = d.items || [];
+  const dirty = new Map();
+
+  const control = (it) => {
+    if (it.type === "bool") {
+      const box = el("input", { type: "checkbox" });
+      box.checked = !!it.value;
+      box.addEventListener("change", () => dirty.set(it.key, box.checked));
+      return box;
+    }
+    if (it.options && it.options.length) {
+      const sel = el("select", {});
+      for (const o of it.options) sel.append(el("option", { value: o }, o));
+      sel.value = String(it.value ?? "");
+      sel.addEventListener("change", () => dirty.set(it.key, sel.value));
+      return sel;
+    }
+    if (it.type === "text") {
+      const ta = el("textarea", { style: "min-height:120px" });
+      ta.value = String(it.value ?? "");
+      ta.addEventListener("input", () => dirty.set(it.key, ta.value));
+      return ta;
+    }
+    const inp = el("input", {
+      type: it.type === "int" ? "number" : "text",
+      style: it.type === "int" ? "min-width:110px" : "",
+    });
+    inp.value = Array.isArray(it.value) ? it.value.join(", ") : String(it.value ?? "");
+    inp.addEventListener("input", () => dirty.set(it.key, inp.value));
+    return inp;
+  };
+
+  const save = async () => {
+    if (!dirty.size) return toast("没有改动");
+    const values = Object.fromEntries(dirty);
+    const r = await call(() => bridge.apiPost("settings/save", { values }));
+    dirty.clear();
+    toast(r.message || "已保存");
+    renderSettings();
+  };
+
+  const blocks = [];
+  for (const group of d.groups || []) {
+    const rows = items.filter((it) => it.group === group);
+    if (!rows.length) continue;
+    blocks.push(el("h3", { style: "margin:18px 0 6px" }, group));
+    for (const it of rows) {
+      blocks.push(el("div", { class: "card", style: "margin-bottom:8px" }, [
+        el("div", { class: "form-row" }, [
+          el("label", { style: "min-width:170px" },
+            it.label + (it.modified ? " ●" : "")),
+          control(it),
+          el("button", {
+            class: "mini",
+            onclick: async () => {
+              await call(() => bridge.apiPost("settings/save", { reset: it.key }));
+              renderSettings();
+            },
+          }, "恢复默认"),
+        ]),
+        it.hint ? el("div", { class: "meta" }, it.hint) : "",
+      ]));
+    }
+    if (group === "视觉解析") {
+      blocks.push(el("div", { class: "toolbar" }, [
+        el("button", {
+          class: "ghost",
+          onclick: async () => {
+            toast("正在测…");
+            const r = await call(() => bridge.apiPost("probe", { what: "vision" }));
+            alert(r.message);
+          },
+        }, "测一下视觉 API"),
+      ]));
+    }
+    if (group === "相册") {
+      blocks.push(el("div", { class: "toolbar" }, [
+        el("button", {
+          class: "ghost",
+          onclick: async () => {
+            toast("正在测…");
+            const r = await call(() => bridge.apiPost("probe", { what: "embed" }));
+            alert(r.message);
+          },
+        }, "测一下向量区分度"),
+      ]));
+    }
+  }
+
+  view.replaceChildren(
+    el("div", { class: "toolbar", style: "position:sticky;top:52px;background:var(--bg);z-index:3;padding:8px 0" }, [
+      el("button", { class: "action", onclick: save }, "保存"),
+      el("span", { class: "meta" }, "改完即时生效，不用重载插件。● = 已改过默认值。接线（恋人 id / 控制台 / Provider）在 AstrBot 插件配置页。"),
+    ]),
+    ...blocks,
+  );
+}
+
 /* ================= 记录 ================= */
 const REC_KINDS = [
   ["f", "事实"], ["e", "事件"], ["s", "日程"], ["m", "纪念日"],
@@ -254,6 +355,7 @@ async function renderPlans() {
 const routes = {
   overview: renderOverview,
   records: renderRecords,
+  settings: renderSettings,
   diary: renderDiary,
   memory: renderMemory,
   chat: renderChat,

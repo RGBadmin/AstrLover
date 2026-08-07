@@ -129,8 +129,8 @@ class VisionConfig:
 
 
 class VisionClient:
-    def __init__(self, conf: dict):
-        """conf：插件压平后的配置字典（键见 _conf_schema.json 的 vision 组）。"""
+    def __init__(self, conf):
+        """conf：Settings 对象（.get(key, default)），键见 settings.py 的视觉解析组。"""
         self._conf = conf
         self.stats = VisionStats()
         self._breaker = _Breaker()

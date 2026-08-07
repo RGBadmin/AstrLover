@@ -20,7 +20,7 @@ class ProfileFace:
 
     # ------------------------------------------------------------------
     def _avatar_root(self) -> Path | None:
-        raw = str(self.app.star_conf.get("avatar_dir") or "").strip()
+        raw = str(self.app.conf.get("avatar_dir") or "").strip()
         if not raw:
             return None
         p = Path(raw)
@@ -49,7 +49,7 @@ class ProfileFace:
             return "换头像失败：这个功能只能在 Telegram 上用。"
         if enforce_limits:
             if wait := await app.limits.cooldown_left(
-                "avatar", int(app.star_conf.get("avatar_cooldown_minutes", 720) or 0)
+                "avatar", int(app.conf.get("avatar_cooldown_minutes", 720) or 0)
             ):
                 return f"刚换过头像，再等 {wait} 分钟吧。"
         path = self.pick(category)
@@ -85,7 +85,7 @@ class ProfileFace:
             return "签名内容是空的。"
         if enforce_limits:
             if wait := await app.limits.cooldown_left(
-                "signature", int(app.star_conf.get("signature_cooldown_minutes", 240) or 0)
+                "signature", int(app.conf.get("signature_cooldown_minutes", 240) or 0)
             ):
                 return f"刚改过签名，再等 {wait} 分钟吧。"
         try:

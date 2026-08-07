@@ -1,466 +1,49 @@
 {
-  "vision": {
-    "description": "① 视觉解析",
+  "wiring": {
+    "description": "接线",
     "type": "object",
-    "hint": "把图读成文字，相册的一切建立在这上面。地址/Key/模型三项齐了才启用，配好发 /vision test 验证。跑成人向图库另见 README。",
+    "hint": "只有这几项在这里设，装机时填一次。其余全部在插件 UI 的「设置」页里改（WebUI → 插件 → AstrLover → 打开页面），改完即时生效。",
     "items": {
-      "vision_api_format": {
-        "description": "接口格式",
-        "type": "string",
-        "default": "openai",
-        "options": [
-          "openai",
-          "anthropic",
-          "gemini"
-        ],
-        "hint": "中转站基本都选 openai，除非它明确说转发原生格式。选错会报「字段不认识」。"
-      },
-      "vision_base_url": {
-        "description": "API 地址",
+      "life_partner_id": {
+        "description": "恋人的 Telegram 数字 user id",
         "type": "string",
         "default": "",
-        "hint": "填到根即可，插件按格式补路径。"
-      },
-      "vision_api_key": {
-        "description": "API Key",
-        "type": "string",
-        "default": "",
-        "hint": "按接口格式自动选鉴权头。"
-      },
-      "vision_model": {
-        "description": "模型 ID",
-        "type": "string",
-        "default": "",
-        "hint": "必须支持图片输入。gemini 直接写模型名，不要写成 models/xxx。"
-      },
-      "vision_stream": {
-        "description": "流式接收",
-        "type": "bool",
-        "default": false,
-        "hint": "只在网关对长响应返回 504 或挂断时才需要开。"
-      },
-      "vision_context_window": {
-        "description": "模型上下文窗口",
-        "type": "int",
-        "default": 128000,
-        "hint": "只用来校验下面那项是否合理，不发给 API。"
-      },
-      "vision_max_tokens": {
-        "description": "最大输出长度",
-        "type": "int",
-        "default": 8192,
-        "hint": "详细提示词建议 ≥8192。Gemini 的思考 token 与正文共用这个额度。"
-      },
-      "vision_extra_body": {
-        "description": "附加请求参数",
-        "type": "text",
-        "default": "",
-        "hint": "一段 JSON，合并进请求体顶层。留空则不加。"
-      },
-      "gemini_safety": {
-        "description": "Gemini 安全阈值",
-        "type": "string",
-        "default": "OFF",
-        "options": [
-          "BLOCK_NONE",
-          "OFF",
-          "默认"
-        ],
-        "hint": "成人向图库必须设，否则 HTTP 200 空回。优先 OFF，老模型报 400 时退回 BLOCK_NONE。",
+        "hint": "只有这个人的对话会进入她的记忆与日记。向 @userinfobot 发条消息即得。",
         "obvious_hint": true
       },
-      "gemini_thinking_budget": {
-        "description": "Gemini 思考预算",
-        "type": "string",
-        "default": "512",
-        "hint": "建议填 512。跑成人向图库时这一项直接决定通过率。",
-        "obvious_hint": true
-      },
-      "vision_system_prompt": {
-        "description": "系统提示词",
-        "type": "text",
-        "default": "",
-        "hint": "正经提示词填这里（system 位）。留空用内置的。",
-        "obvious_hint": true
-      },
-      "vision_prompt": {
-        "description": "解析提示词",
-        "type": "text",
-        "default": "",
-        "hint": "user 位。跑成人向图库时这里只放一句「描述这张图片。」"
-      },
-      "vision_end_mark": {
-        "description": "结束标记",
-        "type": "string",
-        "default": "",
-        "hint": "让模型在末尾写个固定符号，用来判断有没有写完。留空不启用。"
-      },
-      "vision_max_chars": {
-        "description": "描述最长字数",
-        "type": "int",
-        "default": 600,
-        "hint": "存档时按此截断。用详细提示词建议 3000 以上，否则标签行会被砍掉。"
-      },
-      "subject_name": {
-        "description": "主体角色名",
-        "type": "string",
-        "default": "",
-        "hint": "把描述里的「一名女性」这类泛称换成她的名字。留空不替换。"
-      },
-      "vision_min_chars": {
-        "description": "描述最少字数",
-        "type": "int",
-        "default": 0,
-        "hint": "短于此值按敷衍处理并重试。0 = 不检查。"
-      },
-      "vision_concurrency": {
-        "description": "并发数",
-        "type": "int",
-        "default": 2,
-        "hint": "批量索引时可提到 10~20；开太高中转商会排队反而更慢。"
-      },
-      "vision_retries": {
-        "description": "上游故障重试次数",
-        "type": "int",
-        "default": 4,
-        "hint": "限流、超时、5xx 这类。重试用尽不算图片自己的失败。"
-      },
-      "vision_block_retries": {
-        "description": "生成被拦重试次数",
-        "type": "int",
-        "default": 2,
-        "hint": "finishReason 那类。带采样随机性，重试常常能过。"
-      },
-      "vision_hard_retries": {
-        "description": "输入判死重试次数",
-        "type": "int",
-        "default": 1,
-        "hint": "blockReason 那类。是对图本身的判定，重发基本无效。"
-      }
-    }
-  },
-  "gallery": {
-    "description": "② 相册",
-    "type": "object",
-    "hint": "扫描登记 → 视觉索引 → 转向量 → 她按画面内容检索。指令：/gallery scan | index auto | embed auto | search 词。",
-    "items": {
-      "gallery_dir": {
-        "description": "相册目录",
-        "type": "string",
-        "default": "",
-        "hint": "容器内绝对路径，递归扫描。留空则禁用相册。",
-        "obvious_hint": true
-      },
-      "embed_batch": {
-        "description": "向量批量条数",
-        "type": "int",
-        "default": 32,
-        "hint": "撞限流就调小到 8~16。"
-      },
-      "use_snowflake_time": {
-        "description": "从文件名还原拍摄时间",
-        "type": "bool",
-        "default": true,
-        "hint": "推特文件名就是推文 ID，比文件 mtime 准得多。"
-      },
-      "season_prefer_now": {
-        "description": "优先当季的图",
-        "type": "bool",
-        "default": true,
-        "hint": "她没指定季节时生效。"
-      },
-      "gallery_top_k": {
-        "description": "返回候选数",
-        "type": "int",
-        "default": 10,
-        "hint": "最终交给她挑的张数。"
-      },
-      "gallery_fetch_k": {
-        "description": "语义召回数",
-        "type": "int",
-        "default": 60,
-        "hint": "纯计算，加大不花钱。"
-      },
-      "sent_recent_days": {
-        "description": "「最近发过」窗口（天）",
-        "type": "int",
-        "default": 30,
-        "hint": "影响「上次那张」与「换一张」的判定。"
-      }
-    }
-  },
-  "photo_memory": {
-    "description": "③ 图片记忆",
-    "type": "object",
-    "hint": "把上下文里的图换成可检索的文字：省 token 又不失忆。",
-    "items": {
-      "describe_images": {
-        "description": "让她给图片写一句描述",
-        "type": "bool",
-        "default": true,
-        "hint": "跟正文一次生成，不额外调模型。"
-      },
-      "max_context_images": {
-        "description": "上下文保留几张真图",
-        "type": "int",
-        "default": 0,
-        "hint": "超出的折叠成文字占位。⚠️ 折叠不可逆，先确认描述链路跑通再开。0 = 不折叠。",
-        "obvious_hint": true
-      }
-    }
-  },
-  "moment": {
-    "description": "④ 频道动态",
-    "type": "object",
-    "hint": "她的朋友圈。冷却与每日上限只约束她的自主行为，你的手动指令不受限。",
-    "items": {
-      "channel_id": {
-        "description": "频道 ID",
-        "type": "string",
-        "default": "",
-        "hint": "@用户名 或 -100 开头的数字。bot 需为频道管理员。留空则禁用动态。"
-      },
-      "post_cooldown_minutes": {
-        "description": "发动态冷却（分钟）",
-        "type": "int",
-        "default": 180
-      },
-      "post_daily_limit": {
-        "description": "每天最多发几条",
-        "type": "int",
-        "default": 5
-      },
-      "inject_history": {
-        "description": "历史动态注入上下文",
-        "type": "bool",
-        "default": true,
-        "hint": "按时间戳插进对话时间线，她才记得自己发过什么。"
-      },
-      "inject_history_limit": {
-        "description": "最多注入几条",
-        "type": "int",
-        "default": 0,
-        "hint": "0 = 全部。"
-      }
-    }
-  },
-  "face": {
-    "description": "⑤ 头像与签名",
-    "type": "object",
-    "hint": "改的是 bot 自己的资料，全局生效、不按用户区分。",
-    "items": {
-      "avatar_dir": {
-        "description": "头像候选目录",
-        "type": "string",
-        "default": "",
-        "hint": "只读 jpg/jpeg，png 会被忽略。子文件夹名即分类。"
-      },
-      "avatar_cooldown_minutes": {
-        "description": "换头像冷却（分钟）",
-        "type": "int",
-        "default": 720,
-        "hint": "Telegram 未公布频率上限，别设成 0。"
-      },
-      "signature_cooldown_minutes": {
-        "description": "改签名冷却（分钟）",
-        "type": "int",
-        "default": 360,
-        "hint": "同上。"
-      }
-    }
-  },
-  "console": {
-    "description": "⑥ 导演控制台",
-    "type": "object",
-    "hint": "用另一个 bot 下指令，指令不进你俩的聊天。用法发 /help。",
-    "items": {
       "console_token": {
         "description": "控制台 Bot Token",
         "type": "string",
         "default": "",
-        "hint": "跟 BotFather 另要一个 bot。留空则禁用控制台。",
+        "hint": "跟 BotFather 另要一个 bot 当控制台，你的指令不会进你俩的聊天。留空则禁用。",
         "obvious_hint": true
       },
       "console_admins": {
         "description": "控制台管理员 ID",
         "type": "string",
         "default": "",
-        "hint": "你的 Telegram 数字 ID。不填则谁都不理。",
+        "hint": "你的 Telegram 数字 ID，多个用逗号分隔。不填则控制台谁都不理。",
         "obvious_hint": true
-      },
-      "director_context_turns": {
-        "description": "生成时带多少轮历史",
-        "type": "int",
-        "default": 40,
-        "hint": "/act 和主动消息用。"
-      },
-      "console_proxy": {
-        "description": "代理地址",
-        "type": "string",
-        "default": "",
-        "hint": "如 http://127.0.0.1:7890。留空直连。"
-      },
-      "stamp_own_messages": {
-        "description": "给她的消息打时间戳",
-        "type": "bool",
-        "default": true,
-        "hint": "写进对话历史时加 [MM-DD HH:MM]。"
-      }
-    }
-  },
-  "proactive": {
-    "description": "⑦ 主动消息",
-    "type": "object",
-    "hint": "你不说话时她自己开口，时机由「想不想」决定而不是定时器。",
-    "items": {
-      "life_proactive": {
-        "description": "启用主动消息",
-        "type": "bool",
-        "default": true,
-        "hint": "由作息、纪念日、想炫耀、想你了驱动。"
-      },
-      "life_proactive_min_gap_minutes": {
-        "description": "最小间隔（分钟）",
-        "type": "int",
-        "default": 45,
-        "hint": "你最后一条消息之后至少隔这么久。"
-      },
-      "life_max_silence_hours": {
-        "description": "最长沉默（小时）",
-        "type": "int",
-        "default": 30,
-        "hint": "超过这么久没聊，她一定会来找你。"
-      },
-      "proactive_max_unanswered": {
-        "description": "连发几条没回就停",
-        "type": "int",
-        "default": 3,
-        "hint": "你一回复就清零。"
-      },
-      "proactive_quiet": {
-        "description": "静默时段",
-        "type": "string",
-        "default": "23:30-08:30",
-        "hint": "如 23:30-08:30，这段时间不打扰。留空则不设。"
-      }
-    }
-  },
-  "life": {
-    "description": "⑧ 生命模拟",
-    "type": "object",
-    "hint": "她是谁、什么性格由 AstrBot 人格设定负责；插件只维护记录（日程/记忆/日记/事件/纪念日），用 /rec 增删改。",
-    "items": {
-      "life_enabled": {
-        "description": "启用生命模拟层",
-        "type": "bool",
-        "default": true,
-        "hint": "人格、记忆、作息、日记。关掉则只保留上面那些存在感功能。"
-      },
-      "life_timezone": {
-        "description": "她所在时区",
-        "type": "string",
-        "default": "Asia/Shanghai"
-      },
-      "life_partner_id": {
-        "description": "恋人的 Telegram 数字 user id",
-        "type": "string",
-        "default": "",
-        "hint": "只有这个人的对话会进入她的记忆与日记。",
-        "obvious_hint": true
-      },
-      "life_heartbeat_minutes": {
-        "description": "心跳间隔（分钟）",
-        "type": "int",
-        "default": 5,
-        "hint": "推进生活与记忆维护，纯代码不耗 token。"
-      },
-      "life_light_provider_id": {
-        "description": "轻量模型 Provider ID",
-        "type": "string",
-        "default": "",
-        "hint": "记忆沉淀等高频调用。留空用会话当前模型。"
       },
       "life_embedding_provider_id": {
         "description": "Embedding Provider ID",
         "type": "string",
         "default": "",
-        "hint": "相册语义检索与她的记忆召回共用。不配则两者都降级。",
+        "hint": "相册语义检索与她的记忆召回共用。不配则两者都降级为词面/最近优先。",
         "obvious_hint": true
-      }
-    }
-  },
-  "imagegen": {
-    "description": "⑨ 生图",
-    "type": "object",
-    "hint": "相册里翻不到的画面现场生成。锚点图放 persona/anchors/ 下，保证生成的是同一个人。",
-    "items": {
-      "ig_backend_order": {
-        "description": "后端优先顺序",
-        "type": "list",
-        "default": [
-          "nanobanana",
-          "comfyui",
-          "novelai"
-        ],
-        "hint": "按序降级：前一个失败自动试下一个。"
       },
-      "ig_nb_api_key": {
-        "description": "NanoBanana API Key",
-        "type": "string",
-        "default": "",
-        "hint": "支持参考图，人物一致性最好，建议首选。"
-      },
-      "ig_nb_base_url": {
-        "description": "NanoBanana 地址",
-        "type": "string",
-        "default": "https://generativelanguage.googleapis.com"
-      },
-      "ig_nb_model": {
-        "description": "NanoBanana 模型",
-        "type": "string",
-        "default": "gemini-2.5-flash-image"
-      },
-      "ig_comfy_base_url": {
-        "description": "ComfyUI 地址",
-        "type": "string",
-        "default": ""
-      },
-      "ig_comfy_api_key": {
-        "description": "ComfyUI 鉴权 Key",
-        "type": "string",
-        "default": "",
-        "hint": "没有就留空。"
-      },
-      "ig_comfy_workflow": {
-        "description": "ComfyUI workflow 文件",
-        "type": "string",
-        "default": "comfyui_workflow.json",
-        "hint": "API 格式 JSON，放数据目录；用 {POSITIVE}/{NEGATIVE}/{SEED} 占位。"
-      },
-      "ig_nai_api_key": {
-        "description": "NovelAI API Key",
-        "type": "string",
-        "default": "",
-        "hint": "只吃提示词，容易漂移，建议放降级链末位。"
-      },
-      "ig_nai_model": {
-        "description": "NovelAI 模型",
-        "type": "string",
-        "default": "nai-diffusion-4-5-full"
-      }
-    }
-  },
-  "voice": {
-    "description": "⑩ 语音",
-    "type": "object",
-    "hint": "该用语音的时刻发原生语音条。引擎走 AstrBot 服务提供商，需要 ffmpeg。",
-    "items": {
       "life_tts_provider_id": {
         "description": "TTS Provider ID",
         "type": "string",
         "default": "",
         "_special": "select_provider_tts",
         "hint": "留空则禁用语音条。"
+      },
+      "life_enabled": {
+        "description": "启用生命模拟层",
+        "type": "bool",
+        "default": true,
+        "hint": "记录、日程、日记、主动消息。关掉则只保留相册、动态、头像这些存在感功能。"
       }
     }
   }

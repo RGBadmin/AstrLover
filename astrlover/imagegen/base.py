@@ -79,7 +79,7 @@ class ImageGen:
         spec = build_spec(await app.appearance_text(), situation, anchor_paths)
 
         # 优先落到 presence 相册目录，回流后可被她自己检索到
-        album_dir = str(app.star_conf.get("gallery_dir") or "").strip()
+        album_dir = str(app.conf.get("gallery_dir") or "").strip()
         if album_dir and Path(album_dir).is_dir():
             out_root = Path(album_dir) / "aiimages"  # 回流：scan+index 后成为她相册的一部分
         else:

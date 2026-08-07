@@ -154,6 +154,47 @@ def test_life_block_carries_no_persona(app_factory):
     run(go())
 
 
+def test_settings_override_and_reset(app_factory):
+    """设置：默认值 → DB 覆盖 → 恢复默认；接线始终由 AstrBot 配置页说了算。"""
+    async def go():
+        app = app_factory()
+        await app.initialize()
+        conf = app.conf
+
+        assert conf.get("vision_concurrency") == 2          # SPEC 默认值
+        assert conf.get("life_partner_id") == "123"         # 接线来自 AstrBot 配置页
+
+        changed = await conf.save(app.dao, {
+            "vision_concurrency": "8",       # 字符串按 int 规范化
+            "vision_stream": "true",         # 字符串按 bool 规范化
+            "ig_backend_order": "nanobanana, novelai",   # 逗号串按 list 规范化
+            "life_partner_id": "999",        # 接线项不该被设置页改动
+            "不存在的键": "x",
+        })
+        assert set(changed) == {"vision_concurrency", "vision_stream", "ig_backend_order"}
+        assert conf.get("vision_concurrency") == 8
+        assert conf.get("vision_stream") is True
+        assert conf.get("ig_backend_order") == ["nanobanana", "novelai"]
+        assert conf.get("life_partner_id") == "123"         # 接线优先，没被覆盖
+
+        # 重启后仍在
+        conf2 = type(conf)({"life_partner_id": "123"})
+        await conf2.load(app.dao)
+        assert conf2.get("vision_concurrency") == 8
+
+        # dump 给 UI 用：带定义、当前值、是否改过
+        dumped = {d["key"]: d for d in conf.dump()}
+        assert dumped["vision_concurrency"]["modified"] is True
+        assert dumped["vision_max_chars"]["modified"] is False
+        assert dumped["vision_api_format"]["options"]
+
+        assert await conf.reset(app.dao, "vision_concurrency") is True
+        assert conf.get("vision_concurrency") == 2
+        assert await conf.reset(app.dao, "vision_concurrency") is False
+        await app.terminate()
+    run(go())
+
+
 def test_records_crud_and_cleanup(app_factory):
     """记录：能手动增删改，完成/过期的自己消失。"""
     async def go():

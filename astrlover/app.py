@@ -37,6 +37,7 @@ from .memory.working import WorkingMemory
 from .panel.api import PanelApi
 from .persona.prompt import build_life_block
 from .records import Records
+from .settings import Settings
 from .photos.archive import PhotoArchive
 from .photos.memory import PhotoMemory
 from .photos.sender import PhotoSender
@@ -57,8 +58,8 @@ class App:
     def __init__(self, star, context, flat_conf: dict):
         self.star = star
         self.context = context
-        self.star_conf = flat_conf          # presence 侧配置（扁平）
-        self.cfg = Cfg(flat_conf)           # 生命层配置视图
+        self.conf = Settings(flat_conf)     # 接线来自 AstrBot 配置页，其余存数据库
+        self.cfg = Cfg(self.conf)           # 生命层配置视图
         self.ready = False                  # 生命模拟层是否可用
         self.booted = False                 # 存储与 presence 子系统是否可用
 
@@ -115,11 +116,12 @@ class App:
         self.db = Database(self.data_dir / "astrlover.db")
         await self.db.open()
         self.dao = Dao(self.db)
+        await self.conf.load(self.dao)
         self.vectors = Vectors(self.vec_dir, self.context, self.cfg.embedding_provider_id)
         self.llm = LLM(self.context, self.cfg)
 
         self.records = Records(self)
-        self.vision = VisionClient(self.star_conf)
+        self.vision = VisionClient(self.conf)
         self.album = Album(self)
         self.photos = PhotoArchive(self)
         self.photo_memory = PhotoMemory(self)
@@ -283,6 +285,16 @@ class App:
             extra_note=extra_note,
         )
 
+    async def on_settings_changed(self, changed: list[str]):
+        """设置改完即时生效：把持有旧值的组件重置掉，其余下次读就是新值。"""
+        if any(k.startswith("vision_") or k.startswith("gemini_") for k in changed):
+            self.vision._gate = None          # 并发数可能变了
+        if any(k.startswith("ig_") for k in changed):
+            self.imagegen = ImageGen(self)    # 后端顺序/密钥变了，重建降级链
+        if "gallery_dir" in changed:
+            logger.info("[AstrLover] 相册目录已改，记得跑 /gallery scan")
+        logger.info(f"[AstrLover] 设置已更新：{'、'.join(changed)}")
+
     async def appearance_text(self) -> str:
         """生图用的外观基准。第一次要用时让她自己描述一次，存成记录；
         之后可以 /rec set appearance 改，剪头发之类的演变也写回这里。"""
@@ -378,7 +390,7 @@ class App:
                 return "这会清空整个库（描述和向量一起没）。确定就发 /gallery scan reset go"
             res = await album.scanner.scan(
                 prune=bool(rest and rest[0] == "prune"),
-                use_snowflake=bool(self.star_conf.get("use_snowflake_time", True)),
+                use_snowflake=bool(self.conf.get("use_snowflake_time", True)),
             )
             if "error" in res:
                 return res["error"]

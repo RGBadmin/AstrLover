@@ -40,13 +40,13 @@ class Limits:
     async def summary(self) -> list[str]:
         out = []
         for kind, label, minutes in (
-            ("post", "动态", int(self.app.star_conf.get("post_cooldown_minutes", 180) or 0)),
-            ("avatar", "头像", int(self.app.star_conf.get("avatar_cooldown_minutes", 720) or 0)),
-            ("signature", "签名", int(self.app.star_conf.get("signature_cooldown_minutes", 240) or 0)),
+            ("post", "动态", int(self.app.conf.get("post_cooldown_minutes", 180) or 0)),
+            ("avatar", "头像", int(self.app.conf.get("avatar_cooldown_minutes", 720) or 0)),
+            ("signature", "签名", int(self.app.conf.get("signature_cooldown_minutes", 240) or 0)),
         ):
             wait = await self.cooldown_left(kind, minutes)
             out.append(f"{label}：{'可以发' if not wait else f'还差 {wait} 分钟'}")
-        cap = int(self.app.star_conf.get("post_daily_limit", 5) or 0)
+        cap = int(self.app.conf.get("post_daily_limit", 5) or 0)
         if cap > 0:
             out.append(f"今日动态余额：{await self.daily_left('post', cap)}/{cap}")
         return out

@@ -33,7 +33,8 @@
 main.py                  仅 @filter 注册与薄委托（钩子/12 个工具/静默拦截）
 astrlover/
 ├── app.py               装配中心 + 管线钩子实现 + 控制台委托（gallery/vision/status）
-├── config.py            生命层配置视图（读扁平 conf；presence 侧直接读 star_conf）
+├── settings.py          设置 SPEC（57 项）+ Settings：接线取配置页，其余取库
+├── config.py            生命层配置视图（读同一个 Settings）
 ├── tools.py             LLM 工具实现体
 ├── actions.py           排期执行 = 控制台指令重放
 ├── vision/              client（三格式/失败四分类/熔断）· validate（输出校验）
@@ -101,7 +102,15 @@ AstrBot 本来就带时间，不重复打）；她模仿上下文自写的时间
 脱钩。改成她每天自己排一次日程记录——排错了直接改那条记录，
 人设改了第二天自动跟上。心跳只读记录，没有记录就不做作息假设。
 
-**D10 生命层可整个关掉**：`life_enabled=false` 时 `App.ready=False`，
+**D10 配置两处、各管各的**：AstrBot 插件配置页只留 6 项接线
+（恋人 id、控制台 token/管理员、两个 Provider id、生命层开关）——那几项
+决定"插件怎么找到你和你的服务"，装机设一次。其余 57 项在 settings.py
+声明、存数据库、由面板设置页编辑：它们都是**看着结果反复调**的东西
+（重试次数、冷却、top_k、提示词），本来就该在能看到结果的地方调，
+所以设置页旁边直接放了视觉/向量的「测一下」按钮。
+Settings.get() 保持同步（启动时把覆盖值读进内存），调用点无需改 async。
+
+**D11 生命层可整个关掉**：`life_enabled=false` 时 `App.ready=False`，
 presence 能力照常工作；生图在没有外观记录时退化为纯情境描述。
 
 ## 四、数据模型（astrlover.db）
@@ -118,6 +127,6 @@ presence 能力照常工作；生图在没有外观记录时退化为纯情境�
 
 ## 五、测试
 
-`python -m pytest tests` —— 57 项，不需要安装 AstrBot：
+`python -m pytest tests` —— 58 项，不需要安装 AstrBot：
 `conftest.py` 提供 astrbot 桩模块，`test_smoke_app.py` 用假 Context 真正启动
 App 跑通装配、钩子注入、相册扫描检索、图片折叠、控制台命令与全部降级路径。

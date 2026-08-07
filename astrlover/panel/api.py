@@ -9,6 +9,8 @@ import time
 from astrbot.api import logger
 from astrbot.api.web import error_response, file_response, json_response, request
 
+from ..settings import GROUPS
+
 P = "astrlover"
 
 
@@ -28,7 +30,10 @@ class PanelApi:
         reg(f"/{P}/events", self.events, ["GET"], "生活事件流")
         reg(f"/{P}/pending", self.pending, ["GET"], "排期队列")
         reg(f"/{P}/pending/cancel", self.pending_cancel, ["POST"], "取消排期")
-        reg(f"/{P}/export", self.export, ["GET"], "导出档案与记忆包")
+        reg(f"/{P}/settings", self.settings_get, ["GET"], "读取设置")
+        reg(f"/{P}/settings/save", self.settings_save, ["POST"], "保存设置")
+        reg(f"/{P}/probe", self.probe, ["POST"], "就地测试（视觉/向量）")
+        reg(f"/{P}/export", self.export, ["GET"], "导出记忆包")
         logger.info("[AstrLover] 面板 Web API 已注册。")
 
     # ------------------------------------------------------------------
@@ -122,6 +127,30 @@ class PanelApi:
             return error_response("缺少 id")
         await self.app.dao.finish_action(aid, "cancelled")
         return json_response({"ok": True})
+
+    async def settings_get(self):
+        return json_response({"groups": list(GROUPS), "items": self.app.conf.dump()})
+
+    async def settings_save(self):
+        payload = await request.json(default={})
+        if reset_key := str(payload.get("reset") or ""):
+            ok = await self.app.conf.reset(self.app.dao, reset_key)
+            return json_response({"message": "已恢复默认值" if ok else "本来就是默认值"})
+        changed = await self.app.conf.save(self.app.dao, payload.get("values") or {})
+        if not changed:
+            return json_response({"message": "没有改动"})
+        await self.app.on_settings_changed(changed)
+        return json_response({"message": f"已保存 {len(changed)} 项，即时生效", "changed": changed})
+
+    async def probe(self):
+        """设置页上的「测一下」：改完当场验证，不用切到控制台。"""
+        payload = await request.json(default={})
+        what = str(payload.get("what") or "")
+        if what == "vision":
+            return json_response({"message": await self.app.vision_command("test")})
+        if what == "embed":
+            return json_response({"message": await self.app.album.embedder.probe()})
+        return error_response("what 必须是 vision 或 embed")
 
     async def export(self):
         from ..store.export import export_all

@@ -62,7 +62,7 @@ class DirectorBridge:
             if not isinstance(history, list):
                 history = []
             body = text
-            if app.star_conf.get("stamp_own_messages", True):
+            if app.conf.get("stamp_own_messages", True):
                 tz = app.clock.tz if app.clock else None
                 body = f"{datetime.now(tz).strftime(STAMP_FMT)} {text}"
             history.append({"role": "assistant", "content": body})
@@ -162,7 +162,7 @@ class DirectorBridge:
                 history = json.loads(conv.history or "[]")
             except json.JSONDecodeError:
                 history = []
-        limit = max(2, int(app.star_conf.get("director_context_turns", 40) or 40))
+        limit = max(2, int(app.conf.get("director_context_turns", 40) or 40))
         ctx = history[-limit:] if isinstance(history, list) else []
 
         system_prompt = await self.persona_of(target, conv)

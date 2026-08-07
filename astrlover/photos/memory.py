@@ -69,7 +69,7 @@ class PhotoMemory:
     # ------------------------------------------------------------------
     async def register(self, req):
         app = self.app
-        keep = int(app.star_conf.get("max_context_images", 0) or 0)
+        keep = int(app.conf.get("max_context_images", 0) or 0)
         if not app.vision.ready() and keep <= 0:
             return  # 存盘只为"折叠后能取回"和"给视觉模型读"，都不需要就别占磁盘
 
@@ -102,7 +102,7 @@ class PhotoMemory:
         try:
             async with app.vision.gate():
                 text, _ = await app.vision.describe(str(path))
-            max_chars = max(100, int(app.star_conf.get("vision_max_chars", 600) or 600))
+            max_chars = max(100, int(app.conf.get("vision_max_chars", 600) or 600))
             await app.photos.set_detail(int(row["id"]), text[:max_chars])
             logger.info(f"[AstrLover] 图片 #{row['id']} 细节记录已生成（{len(text)} 字）")
         except asyncio.CancelledError:
@@ -116,7 +116,7 @@ class PhotoMemory:
     # ------------------------------------------------------------------
     async def ask_descriptions(self, req):
         app = self.app
-        if not app.star_conf.get("describe_images", True):
+        if not app.conf.get("describe_images", True):
             return
         pids: list[int] = []
         for _msg, _i, url in self._image_parts(req):
@@ -145,7 +145,7 @@ class PhotoMemory:
     # ------------------------------------------------------------------
     async def prune(self, req):
         app = self.app
-        keep = int(app.star_conf.get("max_context_images", 0) or 0)
+        keep = int(app.conf.get("max_context_images", 0) or 0)
         if keep <= 0:
             return
         slots = [(msg, i, url) for msg, i, url in self._image_parts(req)]

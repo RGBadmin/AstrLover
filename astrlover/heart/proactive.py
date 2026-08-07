@@ -38,7 +38,7 @@ class Proactive:
 
     def in_quiet(self) -> bool:
         """静默时段（支持跨零点，如 23:30-08:30）。"""
-        raw = str(self.app.star_conf.get("proactive_quiet") or "").strip()
+        raw = str(self.app.conf.get("proactive_quiet") or "").strip()
         if "-" not in raw:
             return False
         try:
@@ -60,7 +60,7 @@ class Proactive:
             return None
         if self.in_quiet():
             return None
-        cap = int(app.star_conf.get("proactive_max_unanswered", 3) or 0)
+        cap = int(app.conf.get("proactive_max_unanswered", 3) or 0)
         unanswered = int(await app.dao.kv_get("unanswered", 0) or 0)
         if cap > 0 and unanswered >= cap:
             return None
@@ -184,7 +184,7 @@ class Proactive:
         last_user = await app.dao.kv_get("last_user_ts", 0) or 0
         last_fire = await app.dao.kv_get("last_fire_ts", 0) or 0
         unanswered = int(await app.dao.kv_get("unanswered", 0) or 0)
-        cap = int(app.star_conf.get("proactive_max_unanswered", 3) or 0)
+        cap = int(app.conf.get("proactive_max_unanswered", 3) or 0)
         lines = [f"主动消息：{'开' if app.cfg.proactive_enabled else '关'}（意愿驱动）"]
         if last_user:
             lines.append(f"他上次说话：{datetime.fromtimestamp(last_user, tz).strftime('%m-%d %H:%M')}")
@@ -193,7 +193,7 @@ class Proactive:
         if unanswered:
             lines.append(f"连续未获回复：{unanswered} 次" + (f"，满 {cap} 次就停" if cap else ""))
         if self.in_quiet():
-            lines.append(f"⏸ 正在静默时段（{app.star_conf.get('proactive_quiet')}）")
+            lines.append(f"⏸ 正在静默时段（{app.conf.get('proactive_quiet')}）")
         if not app.state_target:
             lines.append("⚠️ 还没绑定目标会话，发不出去。先 /link")
         lines.append(f"节奏：最小间隔 {app.cfg.proactive_min_gap_minutes} 分钟 · "

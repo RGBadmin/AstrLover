@@ -152,11 +152,11 @@ class AlbumSearch:
         want_tiers = self._tiers(rating)
         want_seasons = self._seasons(season)
         default_season = not want_seasons and bool(
-            app.star_conf.get("season_prefer_now", True)
+            app.conf.get("season_prefer_now", True)
         )
         now_season = SEASON_OF_MONTH.get(app.clock.now().month, "") if app.clock else ""
         month_key = self._month(around)
-        recent_window = int(app.star_conf.get("sent_recent_days", 30) or 30) * 86400
+        recent_window = int(app.conf.get("sent_recent_days", 30) or 30) * 86400
         now = time.time()
 
         scored = []
