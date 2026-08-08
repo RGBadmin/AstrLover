@@ -16,6 +16,7 @@ from ..vision.client import ConfigError, GenBlocked, InputBlocked, UpstreamError
 from ..vision.tags import parse_tag_line, scrub_tag_line
 
 VISION_MAX_FAILS = 3
+_REPORT_GAP = 300      # 汇报间隔：五分钟一条，既知道在跑又不刷屏
 _IDLE_ROUNDS = 20  # 后台空转多少轮（无可做任务）才收工
 
 
@@ -44,6 +45,37 @@ class AlbumIndexer:
         return await self._run(count, progress_cb)
 
     # ------------------------------------------------------------------
+    async def _progress(self, done, failed, started, stat0, vision) -> str:
+        """定时汇报要能回答四个问题：跑到哪了、还剩多少、多久跑完、
+        出错的话是什么错。只报"本轮已成 N"等于什么都没说。"""
+        st = await self.app.album.stats()
+        ok_total = int(st.get("ok", 0))
+        pending = int(st.get("pending", 0))
+        total = ok_total + pending + int(st.get("failed", 0))
+        elapsed = max(1.0, time.time() - started)
+        rate = (done + failed) / elapsed * 3600          # 每小时张数
+        eta = f"，按当前速度还要 {pending / rate:.1f} 小时" if rate > 0 and pending else ""
+
+        blocked = vision.stats.blocked - stat0[1]
+        hard = vision.stats.hard - stat0[2]
+        saved = vision.stats.saved - stat0[3]
+        lines = [
+            f"📇 索引中：本轮成 {done} / 败 {failed}，"
+            f"全库 {ok_total}/{total}，还剩 {pending} 张{eta}",
+            f"　速度 {rate:.0f} 张/小时，API 调用 {vision.stats.calls - stat0[0]} 次",
+        ]
+        if blocked + hard:
+            lines.append(
+                f"　被内容策略拦掉 {blocked + hard} 次（生成中 {blocked} / 输入侧 {hard}，"
+                "这些上游算成功照常计费）"
+            )
+        if saved:
+            lines.append(f"　重试救回 {saved} 张")
+        if self.note:
+            lines.append(f"　最近一次失败：{self.note}")
+        lines.append("　`/gallery index stop` 可以停，进度不丢。")
+        return "\n".join(lines)
+
     async def _run(self, count: int | None, progress_cb) -> str:
         app = self.app
         vision = app.vision
@@ -57,7 +89,8 @@ class AlbumIndexer:
         stat0 = (vision.stats.calls, vision.stats.blocked, vision.stats.hard, vision.stats.saved)
         done = failed = 0
         idle = 0
-        last_report = time.time()
+        started = time.time()
+        last_report = started
         try:
             while count is None or done + failed < count:
                 batch_limit = 8 if count is None else min(8, count - done - failed)
@@ -109,10 +142,12 @@ class AlbumIndexer:
                     done += 1
 
                 await asyncio.gather(*(one(r) for r in rows))
-                if progress_cb and time.time() - last_report > 60:
+                if progress_cb and time.time() - last_report > _REPORT_GAP:
                     last_report = time.time()
                     try:
-                        await progress_cb(f"索引进行中：本轮已成 {done}、失败 {failed}")
+                        await progress_cb(await self._progress(
+                            done, failed, started, stat0, vision
+                        ))
                     except Exception:
                         pass
         except ConfigError as e:

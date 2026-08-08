@@ -9,6 +9,7 @@
 """
 
 import asyncio
+import time
 import re
 
 from astrbot.api import logger
@@ -81,6 +82,7 @@ class AlbumEmbedder:
         if not await app.vectors.ensure():
             return f"向量模型用不了：{app.vectors.last_error or '没配（面板「向量模型」组）'}"
         done = 0
+        started = last_report = time.time()
         batch = max(4, min(64, int(app.conf.get("embed_batch", 32) or 32)))
         try:
             while count is None or done < count:
@@ -101,14 +103,38 @@ class AlbumEmbedder:
                         return f"向量接口出错，已停在 {done} 张：{self.note}"
                     await app.album.mark_embedded(row["id"])
                     done += 1
-                if progress_cb:
+                # 以前每批都报一次（一批 32 张），几秒一条消息，而且只说
+                # "已完成 N 张"——既刷屏又什么都没讲。改成定时 + 讲清楚
+                if progress_cb and time.time() - last_report > _REPORT_GAP:
+                    last_report = time.time()
                     try:
-                        await progress_cb(f"向量转换：已完成 {done} 张")
+                        await progress_cb(await self._progress(done, started))
                     except Exception:
                         pass
         except asyncio.CancelledError:
             pass
-        return f"向量转换结束：{done} 张（每张最多 {len(SEGMENTS)} 段）。"
+        st = await app.album.stats()
+        left = max(0, int(st.get("ok", 0)) - int(st.get("embedded", 0)))
+        return (f"🧮 向量转换结束：本轮 {done} 张（每张最多 {len(SEGMENTS)} 段）。\n"
+                f"　全库已转 {st.get('embedded', 0)}/{st.get('ok', 0)}"
+                + (f"，还剩 {left} 张——`/gallery embed auto` 接着跑。" if left else "，全部转完了。")
+                + (f"\n　最近一次失败：{self.note}" if self.note else ""))
+
+    async def _progress(self, done: int, started: float) -> str:
+        st = await self.app.album.stats()
+        ok_total = int(st.get("ok", 0))
+        embedded = int(st.get("embedded", 0))
+        left = max(0, ok_total - embedded)
+        rate = done / max(1.0, time.time() - started) * 3600
+        eta = f"，按当前速度还要 {left / rate:.1f} 小时" if rate > 0 and left else ""
+        lines = [
+            f"🧮 转向量中：本轮 {done} 张，全库 {embedded}/{ok_total}，还剩 {left} 张{eta}",
+            f"　速度 {rate:.0f} 张/小时，模型 {self.app.vectors.client.model}",
+        ]
+        if self.note:
+            lines.append(f"　最近一次失败：{self.note}")
+        lines.append("　`/gallery embed stop` 可以停，进度不丢。")
+        return "\n".join(lines)
 
     async def probe(self) -> str:
         """/gallery embed test：探区分度。低于 0.05 说明模型对这类文本无有效表示。"""

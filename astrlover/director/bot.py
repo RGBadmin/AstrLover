@@ -4,11 +4,14 @@
 也不会两个 bot 抢同一套 getUpdates 报 Conflict。
 """
 
+import asyncio
+
 from astrbot.api import logger
 
 from .console import MENU, DirectorConsole
 
 _TG_LIMIT = 4000
+_ACK_AFTER = 3      # 超过这么多秒还没跑完，就补一条「执行中」
 
 
 class DirectorBot:
@@ -88,15 +91,66 @@ class DirectorBot:
         text = (msg.text or msg.caption or "").strip()
         if not text:
             return
-        reply = await self.console.handle(text, chat_id=msg.chat_id)
+
+        # 先给个"收到了"的信号：typing 是原生的、零噪声，
+        # 超过几秒还没完才补一条明说在跑什么——不然长指令发出去石沉大海，
+        # 分不清是在跑还是挂了
+        try:
+            await self.application.bot.send_chat_action(msg.chat_id, "typing")
+        except Exception:
+            pass
+
+        task = asyncio.create_task(self.console.handle(text, chat_id=msg.chat_id))
+        try:
+            reply = await asyncio.wait_for(asyncio.shield(task), timeout=_ACK_AFTER)
+        except asyncio.TimeoutError:
+            await self.say(msg.chat_id, f"⏳ 执行中：`{text}`")
+            try:
+                reply = await task
+            except Exception as e:
+                logger.error("[AstrLover] 控制台执行出错：", exc_info=True)
+                reply = f"执行出错：{type(e).__name__}: {e}"
+        except Exception as e:
+            logger.error("[AstrLover] 控制台执行出错：", exc_info=True)
+            reply = f"执行出错：{type(e).__name__}: {e}"
         if reply:
             await self.say(msg.chat_id, reply)
 
+    @staticmethod
+    def _html(text: str) -> str:
+        """把 `xxx` 转成 <code>xxx</code>，其余 HTML 转义。
+
+        不走 Markdown：那边正文里任何落单的 * _ [ 都会让整条消息 400，
+        而控制台的回执里全是 UMO、路径、文件名，防不胜防。
+        HTML 只要转义三个字符，可控得多。
+        反引号落单时（数量为奇数）最后一段按普通文本处理，不吞内容。
+        """
+        parts = (text or "").split("`")
+        closed = len(parts) % 2 == 1     # 成对时段数是奇数
+        out = []
+        for i, seg in enumerate(parts):
+            esc = seg.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            out.append(f"<code>{esc}</code>" if i % 2 == 1 and (closed or i < len(parts) - 1)
+                       else esc)
+        # split 把分隔符吃掉了。反引号落单时它不该消失——那多半是正文自带的字符
+        if not closed and len(out) >= 2:
+            out[-1] = "`" + out[-1]
+        return "".join(out)
+
     async def say(self, chat_id, text: str):
+        """回消息。超长切段——切完再逐段转 HTML，每段各自闭合，
+        否则一对反引号被切在两条消息里会各留半个标签。"""
         if self.application is None or not text:
             return
-        try:
-            for i in range(0, len(text), _TG_LIMIT):
-                await self.application.bot.send_message(chat_id=chat_id, text=text[i:i + _TG_LIMIT])
-        except Exception as e:
-            logger.warning(f"[AstrLover] 控制台回复失败：{e}")
+        for i in range(0, len(text), _TG_LIMIT):
+            chunk = text[i:i + _TG_LIMIT]
+            try:
+                await self.application.bot.send_message(
+                    chat_id=chat_id, text=self._html(chunk), parse_mode="HTML",
+                )
+            except Exception as e:
+                logger.warning(f"[AstrLover] 控制台回复失败（改发纯文本重试）：{e}")
+                try:
+                    await self.application.bot.send_message(chat_id=chat_id, text=chunk)
+                except Exception as e2:
+                    logger.warning(f"[AstrLover] 控制台回复彻底失败：{e2}")
