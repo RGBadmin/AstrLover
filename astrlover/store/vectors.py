@@ -1,43 +1,60 @@
 """向量检索：memory（她的记忆）与 album（相册四段）两个 FAISS 库。
 
-复用 AstrBot 内置 FaissVecDB 与 Embedding Provider（供应商中立）。
-Embedding 未配置或初始化失败时优雅降级：available=False，
-上层改用词面检索/最近优先，功能不崩。
+存储用 AstrBot 内置的 FaissVecDB，向量则来自插件自管的 EmbedClient——
+地址/Key/模型都在插件设置里，不碰 AstrBot 的 Embedding Provider。
+没配或连不上时优雅降级：available=False，上层改用词面检索/最近优先。
+
+换了模型或维度必须重建：老向量是另一个空间里的坐标，混在一起检索
+不会报错，只会安静地给出错的结果。所以把模型标识记在 vec/embed_meta.json，
+对不上就整个清掉重来（相册会自动重跑索引，记忆随对话慢慢重新沉淀）。
 """
 
+import json
 import shutil
 import uuid
 from pathlib import Path
 
 from astrbot.api import logger
 
+from ..embed.client import EmbedClient
+
+_META = "embed_meta.json"
+
 
 class Vectors:
-    def __init__(self, vec_dir: Path, context, embedding_provider_id: str):
+    def __init__(self, vec_dir: Path, conf):
         self.vec_dir = vec_dir
-        self.context = context
-        self.embedding_provider_id = embedding_provider_id
+        self.client = EmbedClient(conf)
         self.memory = None   # FaissVecDB
         self.album = None    # FaissVecDB
-        self.provider = None
         self.available = False
         self._init_failed = False
+        self.last_error = ""     # 面板「测一下」要摊开真正的原因
 
     # ------------------------------------------------------------------
-    def _resolve_provider(self):
-        provider = None
-        if self.embedding_provider_id:
-            try:
-                provider = self.context.get_provider_by_id(self.embedding_provider_id)
-            except Exception:
-                provider = None
-        if provider is None:
-            try:
-                providers = self.context.get_all_embedding_providers()
-                provider = providers[0] if providers else None
-            except Exception:
-                provider = None
-        return provider
+    def _read_meta(self) -> str:
+        try:
+            return str(json.loads((self.vec_dir / _META).read_text("utf-8")).get("signature") or "")
+        except Exception:
+            return ""
+
+    def _write_meta(self, signature: str):
+        try:
+            (self.vec_dir / _META).write_text(
+                json.dumps({"signature": signature}, ensure_ascii=False), "utf-8"
+            )
+        except Exception as e:
+            logger.warning(f"[AstrLover] 向量模型标识写入失败：{e}")
+
+    def _wipe(self, *names: str):
+        for name in names:
+            p = self.vec_dir / name
+            if not p.exists():
+                continue
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                p.unlink(missing_ok=True)
 
     async def ensure(self) -> bool:
         """惰性初始化；失败只报一次错，之后静默降级。"""
@@ -46,39 +63,55 @@ class Vectors:
         if self._init_failed:
             return False
         try:
-            provider = self._resolve_provider()
-            if provider is None:
-                raise RuntimeError("未找到可用的 Embedding Provider")
-            self.provider = provider
+            if not self.client.configured:
+                raise RuntimeError("向量模型没配（面板「向量模型」组：地址 / Key / 模型）")
+            self.vec_dir.mkdir(parents=True, exist_ok=True)
+            await self.client.resolve_dim()      # 顺便验证配置是不是真能用
+
+            signature = self.client.signature()
+            if (old := self._read_meta()) and old != signature:
+                logger.warning(
+                    f"[AstrLover] 向量模型换了（{old} → {signature}），"
+                    "旧向量是另一个空间的坐标，已清空重建。"
+                )
+                self._wipe("memory_docs.db", "memory.index", "album_docs.db", "album.index")
 
             from astrbot.core.db.vec_db.faiss_impl.vec_db import FaissVecDB
 
-            self.vec_dir.mkdir(parents=True, exist_ok=True)
             self.memory = FaissVecDB(
                 str(self.vec_dir / "memory_docs.db"),
                 str(self.vec_dir / "memory.index"),
-                provider,
+                self.client,
             )
             await self.memory.initialize()
             self.album = FaissVecDB(
                 str(self.vec_dir / "album_docs.db"),
                 str(self.vec_dir / "album.index"),
-                provider,
+                self.client,
             )
             await self.album.initialize()
+            self._write_meta(signature)
             self.available = True
             logger.info("[AstrLover] 向量库就绪（memory + album）。")
             return True
         except Exception as e:
             self._init_failed = True
+            self.last_error = f"{type(e).__name__}: {e}"
             logger.warning(f"[AstrLover] 向量库初始化失败，将降级为非语义检索：{e}")
             return False
+
+    def reset(self):
+        """配置改过之后重新试一次——不然改对了也要等到重启才生效。"""
+        self.available = False
+        self._init_failed = False
+        self.last_error = ""
+        self.client = EmbedClient(self.client.conf)
 
     async def embed_text(self, text: str) -> list[float]:
         """裸向量（探区分度用）。"""
         if not await self.ensure():
-            raise RuntimeError("Embedding 不可用")
-        return await self.provider.get_embedding(text)
+            raise RuntimeError("向量模型不可用")
+        return await self.client.get_embedding(text)
 
     # ---- memory 库 ----
     async def add_memory(self, text: str, meta: dict) -> str:
@@ -123,20 +156,14 @@ class Vectors:
             return []
 
     async def rebuild_album(self):
-        """清空相册向量库（换模型/换维度后重建）。"""
+        """只清相册向量库（/gallery reindex 用），记忆库不动。"""
         try:
             if self.album is not None:
                 await self.album.close()
         except Exception:
             pass
         self.album = None
-        for name in ("album_docs.db", "album.index"):
-            p = self.vec_dir / name
-            if p.exists():
-                if p.is_dir():
-                    shutil.rmtree(p, ignore_errors=True)
-                else:
-                    p.unlink(missing_ok=True)
+        self._wipe("album_docs.db", "album.index")
         self.available = False
         self._init_failed = False
         await self.ensure()

@@ -185,9 +185,6 @@ class _FakeContext:
     def get_provider_by_id(self, _pid):
         return None
 
-    def get_all_embedding_providers(self):
-        return []
-
     def get_using_provider(self, **_kw):
         return None
 

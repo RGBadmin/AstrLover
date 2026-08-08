@@ -46,9 +46,6 @@ class Cfg:
     def light_provider_id(self) -> str:
         return self._s("life_light_provider_id")
 
-    @property
-    def embedding_provider_id(self) -> str:
-        return self._s("life_embedding_provider_id")
 
     @property
     def tts_provider_id(self) -> str:

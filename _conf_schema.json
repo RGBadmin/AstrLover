@@ -25,13 +25,6 @@
         "hint": "你的 Telegram 数字 ID，多个用逗号分隔。不填则控制台谁都不理。",
         "obvious_hint": true
       },
-      "life_embedding_provider_id": {
-        "description": "Embedding Provider ID",
-        "type": "string",
-        "default": "",
-        "hint": "相册语义检索与她的记忆召回共用。不配则两者都降级为词面/最近优先。",
-        "obvious_hint": true
-      },
       "life_tts_provider_id": {
         "description": "TTS Provider ID",
         "type": "string",

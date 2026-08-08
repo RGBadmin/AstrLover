@@ -127,7 +127,7 @@ class App:
             self._clear_vec_dir()
         self.dao = Dao(self.db)
         await self.conf.load(self.dao)
-        self.vectors = Vectors(self.vec_dir, self.context, self.cfg.embedding_provider_id)
+        self.vectors = Vectors(self.vec_dir, self.conf)
         self.llm = LLM(self.context, self.cfg)
 
         self.records = Records(self)
@@ -298,6 +298,10 @@ class App:
             self.vision._gate = None          # 并发数可能变了
         if any(k.startswith("ig_") for k in changed):
             self.imagegen = ImageGen(self)    # 后端顺序/密钥变了，重建降级链
+        if any(k.startswith("embed_") for k in changed):
+            # 之前配错过就已经标记为"初始化失败"，不重置的话改对了也要等重启
+            self.vectors.reset()
+            logger.info("[AstrLover] 向量模型已改，下次检索时重新连；换了模型会自动重建向量库")
         if "gallery_dir" in changed:
             logger.info("[AstrLover] 相册目录已改，记得跑 /gallery scan")
         logger.info(f"[AstrLover] 设置已更新：{'、'.join(changed)}")

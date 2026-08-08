@@ -5,7 +5,7 @@
 检索时取最大相似度，环境词就能直接撞上环境段。
 标签行是关键词密度最高的一段，无论在描述开头还是末尾都并进动作段。
 
-向量走 AstrBot Embedding Provider + FAISS（供应商中立，随平台配置）。
+向量来自插件自管的向量模型（astrlover/embed/client.py）+ FAISS。
 """
 
 import asyncio
@@ -79,9 +79,9 @@ class AlbumEmbedder:
     async def _run(self, count: int | None, progress_cb) -> str:
         app = self.app
         if not await app.vectors.ensure():
-            return "Embedding Provider 未配置或初始化失败（life_models 组）"
+            return f"向量模型用不了：{app.vectors.last_error or '没配（面板「向量模型」组）'}"
         done = 0
-        batch = max(4, min(64, int(app.conf.get("embed_batch", 16) or 16)))
+        batch = max(4, min(64, int(app.conf.get("embed_batch", 32) or 32)))
         try:
             while count is None or done < count:
                 limit = batch if count is None else min(batch, count - done)
@@ -114,7 +114,7 @@ class AlbumEmbedder:
         """/gallery embed test：探区分度。低于 0.05 说明模型对这类文本无有效表示。"""
         app = self.app
         if not await app.vectors.ensure():
-            return "Embedding Provider 未配置或初始化失败"
+            return f"向量模型用不了：{app.vectors.last_error or '没配（面板「向量模型」组）'}"
         a = "酒店房间落地窗前，黑色丝袜配红底细高跟，倚在窗边回头看镜头"
         b = "卧室大床上仰躺，白色过膝袜，双腿抬起弯曲，逆光剪影"
         c = "一碗热气腾腾的牛肉面，葱花香菜，木质餐桌"
