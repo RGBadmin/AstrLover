@@ -94,19 +94,35 @@ def test_euphemisms_map_to_index_words():
 
 
 # ---------------------------------------------------------------- 情境预测
-def test_prediction_section_uses_the_scene_not_the_moment():
-    """照片拍的是那个场景，不是此刻这句话。"""
-    sec = _section("顺着情境往下想")
-    assert "等下出门" in sec and "室外" in sec, "缺少「等下出门」那个例子"
-    for scene in ("出门以后", "刚进门", "床上"):
-        assert scene in sec, f"少了「{scene}」这类情境"
+def test_prediction_adds_words_instead_of_replacing():
+    """预测是补充，不是替换。
+
+    「她在家化妆，等下出门拍给你」——化妆是真实上下文，该留着；
+    漏掉「出门以后」那组才是错。词面不取交集，两组一起给谁都不漏。
+    """
+    sec = _section("此刻的词，加上等下的词")
+    assert "两组都给" in sec
+    # 那个例子里两组词都在
+    for now in ("卧室", "梳妆台", "化妆", "睡衣"):
+        assert now in sec, f"此刻那组少了「{now}」"
+    for later in ("室外", "马路", "街道", "全身镜", "站姿", "穿搭"):
+        assert later in sec, f"等下那组少了「{later}」"
+
+
+def test_prediction_covers_several_shapes():
+    sec = _section("此刻的词，加上等下的词")
+    for shape in ("此刻：", "等下："):
+        assert sec.count(shape) >= 3, f"「{shape}」的例子太少"
+    assert "找旧图" in sec, "他指名要旧图时不该再预测"
 
 
 def test_prediction_examples_give_real_words():
     """例子里给的词也得是能搜的，不能只是说说。"""
-    sec = _section("顺着情境往下想")
-    for word in ("室外", "马路", "全身镜", "自拍", "玄关", "沙发", "侧躺", "副驾"):
-        assert word in sec and segment(word), f"「{word}」不在例子里或搜不到"
+    sec = _section("此刻的词，加上等下的词")
+    for word in ("室外", "马路", "全身镜", "自拍", "玄关", "沙发", "侧躺",
+                 "副驾", "梳妆台", "化妆", "雾气", "湿发"):
+        assert word in sec, f"「{word}」不在例子里"
+        assert segment(word), f"「{word}」搜不到"
 
 
 # ---------------------------------------------------------------- 形态
