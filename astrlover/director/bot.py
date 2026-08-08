@@ -35,7 +35,7 @@ class DirectorBot:
         try:
             from telegram.ext import ApplicationBuilder, MessageHandler, filters
 
-            builder = ApplicationBuilder().token(str(self.app.conf["console_token"]).strip())
+            builder = ApplicationBuilder().token(str(self.app.conf.get("console_token")).strip())
             if proxy := str(self.app.conf.get("console_proxy") or "").strip():
                 builder = builder.proxy(proxy).get_updates_proxy(proxy)
             self.application = builder.build()
