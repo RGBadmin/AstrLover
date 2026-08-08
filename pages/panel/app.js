@@ -148,6 +148,50 @@ async function renderRecords() {
     ]);
   };
 
+  // 能手动加的只有这四类，各自的格式要求也不一样；
+  // 其余几类是她自己产生的，加不了，说清楚为什么比藏起来强
+  const ADDABLE = {
+    f: "他不吃香菜（写 self 开头则记她自己：self 最近在追一部剧）",
+    e: "今天下午去了趟花市",
+    m: "2026-04-20 认识的日子 since",
+    s: "14:00-16:00 和小雅逛街",
+  };
+  const NOT_ADDABLE = {
+    d: "日记是她自己写的，加不了——但可以改和删。",
+    p: "排期是她自己排的，加不了——但可以改和删。",
+    o: "情绪由聊天自然产生，会自己衰减，加不了。",
+    state: "状态只有固定几项，改就行，不新增。",
+  };
+
+  const addBar = el("div", { class: "toolbar" });
+
+  const renderAddBar = () => {
+    const hint = ADDABLE[current];
+    if (!hint) {
+      addBar.replaceChildren(
+        el("span", { class: "meta" }, NOT_ADDABLE[current] || ""),
+      );
+      return;
+    }
+    const label = (kinds.find((k) => k.key === current) || {}).label || "";
+    const addText = el("input", {
+      type: "text", style: "flex:1;min-width:260px",
+      placeholder: `新${label}，例如：${hint}`,
+    });
+    const submit = async () => {
+      if (!addText.value.trim()) return toast("内容是空的");
+      await mutate({ op: "add", kind: current, text: addText.value });
+      // 不用清空：mutate 成功会重新 load，输入框整个换成新的
+    };
+    addText.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") submit();
+    });
+    addBar.replaceChildren(
+      addText,
+      el("button", { class: "action", onclick: submit }, `添加${label}`),
+    );
+  };
+
   const load = async () => {
     const d = await call(() => bridge.apiGet("records", { kind: current, limit: 60 }));
     const rows = d.rows || [];
@@ -156,6 +200,7 @@ async function renderRecords() {
     for (const b of tabs.querySelectorAll("button[data-kind]")) {
       b.className = b.dataset.kind === current ? "action" : "ghost";
     }
+    renderAddBar();
   };
 
   for (const k of kinds) {
@@ -165,30 +210,7 @@ async function renderRecords() {
     }, k.label));
   }
 
-  const addKind = el("select", {});
-  for (const [v, label] of [["f", "事实"], ["e", "事件"], ["m", "纪念日"], ["s", "日程"]]) {
-    addKind.append(el("option", { value: v }, label));
-  }
-  const addText = el("input", {
-    type: "text", style: "flex:1;min-width:260px",
-    placeholder: "新记录内容（纪念日：2026-04-20 认识的日子 since；日程：14:00-16:00 逛街）",
-  });
-
-  view.replaceChildren(
-    tabs,
-    el("div", { class: "toolbar" }, [
-      addKind, addText,
-      el("button", {
-        class: "action",
-        onclick: async () => {
-          if (!addText.value.trim()) return toast("内容是空的");
-          await mutate({ op: "add", kind: addKind.value, text: addText.value });
-          addText.value = "";
-        },
-      }, "添加"),
-    ]),
-    list,
-  );
+  view.replaceChildren(tabs, addBar, list);
   await load();
 }
 
