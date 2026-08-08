@@ -30,10 +30,18 @@ _ASCII = re.compile(r"[A-Za-z0-9]+")
 
 
 def segment(query: str) -> list[str]:
-    """中文不写空格：先按标签词典正向最大匹配，切不动的退二元滑窗。"""
+    """中文不写空格：先按标签词典正向最大匹配，切不动的退二元滑窗。
+
+    整段先查一次词典：字母和汉字是分开扫的，「M腿大开」「T恤」这种
+    混排词按后面那套永远匹配不上——字母那半太短被丢掉，剩下的汉字
+    「腿大开」又不成词，最后只剩个「腿」，等于没搜。
+    """
     words: list[str] = []
     for chunk in re.split(r"[\s，,、。;；]+", query.strip()):
         if not chunk:
+            continue
+        if chunk in TAG_VOCAB:
+            words.append(chunk)
             continue
         for m in _ASCII.finditer(chunk):
             if len(m.group(0)) >= 2:

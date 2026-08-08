@@ -207,6 +207,22 @@ _STATE_WORDS = """
 勃起 半硬 湿了 水多 泛滥 张开 合拢 撑开 红肿 充血 挺立 凸起 潮红
 勒肉 破洞 勾丝 半脱 全裸 露点
 """
+# 场景与拍法：正文第一层、第二层里天天出现，标签候选值里却没有对应项
+_SCENE_WORDS = """
+酒店 卧室 客厅 浴室 厨房 玄关 沙发 床上 地上 镜子前 落地窗 洗手台 马桶
+方向盘 副驾 座椅 车窗 街道 马路 公园 天台 停车场 海滩 泳池 楼道 雾气 湿发
+全身镜 试衣间 电梯 隔间 被窝 夜里 白天
+"""
+_SHOT_WORDS = """
+自拍 他拍 特写 全身 半身 俯拍 仰拍 平视 正面 背面 侧面 站姿 坐姿 跪姿
+侧躺 仰躺 俯趴 蹲姿 穿搭 工装 制服 睡衣
+腿部特写 胸部特写 下体特写 局部特写
+"""
+# 组合说法：拆开后只剩「腿」「特写」这种没区分度的碎片，得整体收进来
+_PHRASE_WORDS = """
+M腿大开 双腿大开 大腿根 双腿张开 手指插入 手指抠弄 掰开阴唇 撑开阴道口
+淫水外溢 淫水流出 精液外流 乳头挺立 袜口勒肉 半脱状态 推到一侧
+"""
 
 
 # ---------------------------------------------------------------- 分词词典
@@ -231,7 +247,8 @@ def build_vocab() -> frozenset:
                         put(piece)
     for k in list(OWNER) + list(ALIAS):
         put(str(k))
-    for group in (_BODY_WORDS, _ACTION_WORDS, _FLUID_WORDS, _STATE_WORDS):
+    for group in (_BODY_WORDS, _ACTION_WORDS, _FLUID_WORDS, _STATE_WORDS,
+                  _SCENE_WORDS, _SHOT_WORDS, _PHRASE_WORDS):
         for one in group.split():
             put(one)
     return frozenset(vocab)
