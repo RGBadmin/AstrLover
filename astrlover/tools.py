@@ -5,15 +5,17 @@
 
 from astrbot.api import logger
 
+from .memory import transcript
 from .photos.sender import parse_photo_id
 
-_WANT_SYSTEM = (
-    "你是检索助手。根据角色想发照片的理由和最近的对话，"
-    "给出用于在她相册里检索的关键词与画面描述。"
-    '输出 JSON：{"keywords": "空格分隔的检索词", "want": "一句话画面描述", '
-    '"rating": "生活|OOTD|性感|诱惑|露点|淫荡 之一，判断不出留空", '
-    '"season": "春|夏|秋|冬|春秋|四季，判断不出留空"}。'
-    "关键词要多给几个：地点、姿势、身体部位、衣着、动作都算。只输出 JSON。"
+# 输出格式由代码钉死，不放进可编辑的提示词里——
+# 用户调提示词是常事，调坏了解析就白瞎一次调用
+_JSON_CONTRACT = (
+    "\n\n【输出】\n"
+    '只输出这个 JSON：{"keywords": "空格分隔的检索词，六到十个", '
+    '"want": "一句话画面描述，陈述句", '
+    '"rating": "生活|OOTD|性感|诱惑|露点|淫荡 之一，拿不准留空", '
+    '"season": "春|夏|秋|冬|春秋|四季，通常留空"}'
 )
 
 
@@ -48,10 +50,21 @@ class Tools:
         return "\n".join(lines)
 
     async def want_photo(self, event, reason: str = "") -> str:
-        """她只说"为什么想发"，由轻模型想检索词，再走同一套检索。"""
+        """她只说"为什么想发"，由轻模型想检索词，再走同一套检索。
+
+        必须把最近对话一起给——提示词教的是"从他的话里抠词"，
+        不给对话就只剩一句理由可抠，抠不出几个词来。
+        """
         app = self.app
-        prompt = f"角色想发照片的理由：{reason or '（没说，看最近对话）'}"
-        plan = await app.llm.light_json(prompt, system_prompt=_WANT_SYSTEM)
+        parts = [f"她想发照片的理由：{reason or '（没说）'}"]
+        try:
+            rows = await transcript.load(app)
+            if convo := transcript.as_script(rows, limit=12, width=120):
+                parts.append(f"最近对话：\n{convo}")
+        except Exception as e:
+            logger.debug(f"[AstrLover] 取最近对话失败，只按理由造词：{e}")
+        system = str(app.conf.get("gallery_search_prompt") or "") + _JSON_CONTRACT
+        plan = await app.llm.light_json("\n\n".join(parts), system_prompt=system)
         if not isinstance(plan, dict):
             plan = {}
         return await self.browse_gallery(

@@ -187,6 +187,28 @@ def season_wants(word: str) -> tuple[str, ...]:
 GRAM_MIN_LEN = 4
 
 
+# 标签候选值只有「淫水拉丝」「液体-淫水外溢」这种复合形态，裸词进不来——
+# 可描述正文里写的就是裸词，人搜的时候打的也是裸词。这批词补上，
+# 否则「淫水」会被退成二元滑窗切成「淫水」以外的碎片，命中率差一大截。
+# 来源是视觉解析提示词末尾那份词表，跟正文用词同源。
+_BODY_WORDS = """
+鸡巴 龟头 肉棒 睾丸 蛋蛋 骚逼 阴户 小穴 阴唇 小阴唇 大阴唇 阴蒂 豆豆
+阴道口 奶子 乳头 奶头 乳晕 乳房 乳沟 侧乳 下乳 屁股 屁眼 肛门 骚屁眼
+阴毛 腰窝 翘臀 臀缝 腹部 肚脐 锁骨 腋下 大腿 小腿 脚背 脚趾 美甲
+"""
+_ACTION_WORDS = """
+抽插 扒开 掰开 撑开 插入 自慰 口交 骑乘 后入 正常位 舔弄 吮吸
+张开 夹紧 揉捏 抠弄 掐住 跪坐 弯腰 手撑 蹲着 仰躺 俯趴 侧躺
+"""
+_FLUID_WORDS = """
+精液 淫水 骚水 白浆 口水 汗水 前列腺液 拉丝 外溢 内射 颜射
+"""
+_STATE_WORDS = """
+勃起 半硬 湿了 水多 泛滥 张开 合拢 撑开 红肿 充血 挺立 凸起 潮红
+勒肉 破洞 勾丝 半脱 全裸 露点
+"""
+
+
 # ---------------------------------------------------------------- 分词词典
 def build_vocab() -> frozenset:
     """拿标签候选值凑中文分词词典：领域最常用词的集合，比通用分词库贴题。
@@ -209,6 +231,9 @@ def build_vocab() -> frozenset:
                         put(piece)
     for k in list(OWNER) + list(ALIAS):
         put(str(k))
+    for group in (_BODY_WORDS, _ACTION_WORDS, _FLUID_WORDS, _STATE_WORDS):
+        for one in group.split():
+            put(one)
     return frozenset(vocab)
 
 

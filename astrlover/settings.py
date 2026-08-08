@@ -9,6 +9,8 @@ AstrBot 的插件配置页只留「接线」——恋人 id、控制台 token �
 
 from dataclasses import dataclass, field
 
+from .album.prompts import SEARCH_PROMPT
+
 
 @dataclass(frozen=True)
 class S:
@@ -60,6 +62,7 @@ SPEC: tuple[S, ...] = (
     S(key='gallery_dir', group='相册', label='相册目录', type='string', default='', hint='容器内绝对路径，递归扫描。留空则禁用相册。'),
     S(key='use_snowflake_time', group='相册', label='从文件名还原拍摄时间', type='bool', default=True, hint='推特文件名就是推文 ID，比文件 mtime 准得多。'),
     S(key='season_prefer_now', group='相册', label='优先当季的图', type='bool', default=True, hint='她没指定季节时生效。'),
+    S(key='gallery_search_prompt', group='相册', label='检索造词提示词', type='text', default=SEARCH_PROMPT, hint='want_photo 用它把「想发照片」翻成检索词。用词要跟视觉解析提示词对齐。输出格式由代码追加，改不坏。'),
     S(key='gallery_top_k', group='相册', label='返回候选数', type='int', default=10, hint='最终交给她挑的张数。'),
     S(key='gallery_fetch_k', group='相册', label='语义召回数', type='int', default=60, hint='纯计算，加大不花钱。'),
     S(key='sent_recent_days', group='相册', label='「最近发过」窗口（天）', type='int', default=30, hint='影响「上次那张」与「换一张」的判定。'),
