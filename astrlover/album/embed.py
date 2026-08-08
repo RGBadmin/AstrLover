@@ -1,9 +1,13 @@
-"""相册向量化：一张图的描述切四段，各转一个向量。
+"""相册向量化：一张图的描述切三段，各转一个向量。
 
-为什么要切：整篇三千字里九成是身体细节，环境那两百字会被彻底稀释——
-「黑色反光桌面，大片水渍」在全文向量里几乎看不见。按层切开各转一个，
-检索时取最大相似度，环境词就能直接撞上环境段。
-标签行是关键词密度最高的一段，无论在描述开头还是末尾都并进动作段。
+为什么要切：一个向量装不下整篇的细节，长的那部分会把短的淹掉。
+描述里身体细节占一半以上，环境那两百字在整篇向量里几乎看不见——
+搜「车里」时，所有车里拍的图整篇向量彼此差得很远，谁都不像。
+按层切开各转一个、检索时取最大相似度，环境词就能直接撞上环境段。
+
+三段（env / body / act）跟检索侧对齐：提示词让她按环境、身体衣着、
+动作体液三类各给几个词，三类词各打一段。
+标签行是关键词密度最高的一行，并进动作段。
 
 向量来自插件自管的向量模型（astrlover/embed/client.py）+ FAISS。
 """
@@ -16,21 +20,45 @@ from astrbot.api import logger
 
 from ..vision.tags import find_tag_line
 
-SEGMENTS = ("full", "env", "body", "act")
+# 三段，不是四段。原先还有个 full（整篇），砍掉了：描述一千五到两千字时
+# 第三层仍占大头，full ≈ body 加一点噪声，两个向量高度相关，取最大时几乎
+# 总是同时高同时低——多花 25% 的调用换一份重复信息。full 还是最长的一段，
+# 最容易撞上 embedding 的输入上限（gemini-embedding-001 只有 2048 token），
+# 一截断砍掉的正好是排在最后的互动与体液两层。
+SEGMENTS = ("env", "body", "act")
 
+# 标题两种写法都认：提示词里写「第一层：环境与背景」，也可能只写裸标题；
+# 三个层名还有带不带「与」两种（互动与动作 / 互动动作）。
+# 认死一种的下场是三段静默退化成整篇一段，而且不报任何错。
 _LAYER_HEAD = re.compile(
-    r"(?:^|\n)[\s#*【\[]*(环境与背景|物品道具|人物整体|身体细节|互动动作|体液痕迹)[】\]]*[:：]?\s*"
+    r"(?:^|\n)[\s#*【\[]*"
+    r"(?:第[一二三四五六1-6]层[\s:：、.]*)?"
+    r"(环境与背景|环境背景|人物整体|身体细节"
+    r"|互动与动作|互动动作|物品与道具|物品道具|体液与痕迹|体液痕迹)"
+    r"[】\]]*[\s:：]*"
 )
 _LAYER_OF_SEG = {
-    "env": ("环境与背景", "物品道具"),
+    "env": ("环境与背景", "环境背景"),
     "body": ("人物整体", "身体细节"),
-    "act": ("互动动作", "体液痕迹"),
+    # 道具跟动作体液一段：提示词里第五层写的是玩具、绳子、衣物、液体，
+    # 检索侧「跳蛋 假鸡巴 绳子」也归在动作那一类，两边对齐
+    "act": ("互动与动作", "互动动作", "物品与道具", "物品道具",
+            "体液与痕迹", "体液痕迹"),
 }
+
+_FALLBACK_COVER = 0.5   # 切出来的内容不足描述的一半，就当没切明白
 
 
 def split_layers(desc: str) -> dict[str, str]:
-    """按层级标题切描述；没有标题的老式描述只有 full 段。"""
-    out = {"full": desc.strip()}
+    """按层级标题切成三段。
+
+    切不出来（老式描述、标题被模型写飞了）就整篇一段兜底——
+    宁可多转一个向量，也不能让一部分内容根本进不了索引。
+    """
+    desc = (desc or "").strip()
+    if not desc:
+        return {}
+    out: dict[str, str] = {}
     pieces: dict[str, list[str]] = {}
     matches = list(_LAYER_HEAD.finditer(desc))
     for i, m in enumerate(matches):
@@ -43,6 +71,8 @@ def split_layers(desc: str) -> dict[str, str]:
             text = (text + "\n" + tag).strip()
         if text.strip():
             out[seg] = text.strip()
+    if sum(len(t) for t in out.values()) < len(desc) * _FALLBACK_COVER:
+        out["full"] = desc
     return out
 
 
@@ -81,6 +111,11 @@ class AlbumEmbedder:
         app = self.app
         if not await app.vectors.ensure():
             return f"向量模型用不了：{app.vectors.last_error or '没配（面板「向量模型」组）'}"
+        if app.vectors.album_wiped:
+            # 向量库被清了（换模型或换分段），DB 里的 embedded 标记全是假的
+            n = await app.album.clear_embedded()
+            app.vectors.album_wiped = False
+            logger.info(f"[AstrLover] 相册向量已作废，{n} 张重新排队转换。")
         done = 0
         started = last_report = time.time()
         batch = max(4, min(64, int(app.conf.get("embed_batch", 32) or 32)))

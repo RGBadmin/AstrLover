@@ -40,7 +40,7 @@ astrlover/
 ├── vision/              client（三格式/失败四分类/熔断）· validate（输出校验）
 │                        tags（分级/季节/标签行/分词词典）· tag_schema（标签候选值）
 ├── album/               store（DAO）· scan（.archive 分类 + snowflake 时间）· prompts（检索造词）
-│                        index（后台索引 + 批次报告）· embed（四段向量 + 区分度探测）
+│                        index（后台索引 + 批次报告）· embed（三段向量 + 区分度探测）
 │                        search（IDF 词面 + 语义 + 分层确定性排序）· service（门面/维护）
 ├── photos/              archive（sha 去重 + 编号 + 两层描述）· memory（三段钩子逻辑）
 │                        sender（g123/#3 解析与发送记账）
@@ -72,7 +72,7 @@ astrlover/
 生成中被拦独立预算（采样随机，重试常有效）、输入侧判死独立预算（基本无效）。
 后两种都是 HTTP 200 空正文且照常计费，必须自己记账并在批次报告里摊开。
 
-**D4 检索确定性**：词面 IDF 不取交集 + 语义四段取最大，合并后按
+**D4 检索确定性**：词面 IDF 不取交集 + 语义三段取最大，合并后按
 「明说条件 > 默认偏好 > 匹配度 > 时间 > id」分层排序，同分按 id 兜底——
 同一段词每次必须搜出同一批，否则"上次那张"会在多次检索间漂移。
 
@@ -151,7 +151,7 @@ Embedding Provider——报错落在插件自己的日志和面板上，能直�
 `cheatsheet`（版本化小抄）· `pending_actions`（排期）· `kvmisc`（游标/计数/设置/状态）
 
 向量：FAISS 双库——`memory`（事实/日记，带 ts 做时间衰减）与
-`album`（每图四段，meta={img, seg}）。
+`album`（每图三段 env/body/act，meta={img, seg}；分段方式变了自动重建）。
 
 ## 五、测试
 

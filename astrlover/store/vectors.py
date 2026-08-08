@@ -1,4 +1,4 @@
-"""向量检索：memory（她的记忆）与 album（相册四段）两个 FAISS 库。
+"""向量检索：memory（她的记忆）与 album（相册三段）两个 FAISS 库。
 
 存储用 AstrBot 内置的 FaissVecDB，向量则来自插件自管的 EmbedClient——
 地址/Key/模型都在插件设置里，不碰 AstrBot 的 Embedding Provider。
@@ -7,6 +7,7 @@
 换了模型或维度必须重建：老向量是另一个空间里的坐标，混在一起检索
 不会报错，只会安静地给出错的结果。所以把模型标识记在 vec/embed_meta.json，
 对不上就整个清掉重来（相册会自动重跑索引，记忆随对话慢慢重新沉淀）。
+分段方式改了同理，但那只作废相册——记忆不分段，不受影响。
 """
 
 import json
@@ -16,6 +17,7 @@ from pathlib import Path
 
 from astrbot.api import logger
 
+from ..album.embed import SEGMENTS
 from ..embed.client import EmbedClient
 
 _META = "embed_meta.json"
@@ -30,21 +32,24 @@ class Vectors:
         self.available = False
         self._init_failed = False
         self.last_error = ""     # 面板「测一下」要摊开真正的原因
+        self.album_wiped = False  # 相册库被清过，DB 里的 embedded 标记要跟着清
 
     # ------------------------------------------------------------------
-    def _read_meta(self) -> str:
+    def _read_meta(self) -> dict:
         try:
-            return str(json.loads((self.vec_dir / _META).read_text("utf-8")).get("signature") or "")
+            return json.loads((self.vec_dir / _META).read_text("utf-8"))
         except Exception:
-            return ""
+            return {}
 
     def _write_meta(self, signature: str):
         try:
             (self.vec_dir / _META).write_text(
-                json.dumps({"signature": signature}, ensure_ascii=False), "utf-8"
+                json.dumps({"signature": signature, "segments": list(SEGMENTS)},
+                           ensure_ascii=False),
+                "utf-8",
             )
         except Exception as e:
-            logger.warning(f"[AstrLover] 向量模型标识写入失败：{e}")
+            logger.warning(f"[AstrLover] 向量库标识写入失败：{e}")
 
     def _wipe(self, *names: str):
         for name in names:
@@ -69,12 +74,22 @@ class Vectors:
             await self.client.resolve_dim()      # 顺便验证配置是不是真能用
 
             signature = self.client.signature()
-            if (old := self._read_meta()) and old != signature:
+            meta = self._read_meta()
+            if (old := meta.get("signature")) and old != signature:
+                # 换了模型/维度：两个库都作废，旧向量是另一个空间的坐标
                 logger.warning(
-                    f"[AstrLover] 向量模型换了（{old} → {signature}），"
-                    "旧向量是另一个空间的坐标，已清空重建。"
+                    f"[AstrLover] 向量模型换了（{old} → {signature}），已清空重建。"
                 )
                 self._wipe("memory_docs.db", "memory.index", "album_docs.db", "album.index")
+                self.album_wiped = True
+            elif (segs := meta.get("segments")) and list(segs) != list(SEGMENTS):
+                # 只改了分段方式：记忆库不受影响，只重建相册
+                logger.warning(
+                    f"[AstrLover] 相册分段方式换了（{segs} → {list(SEGMENTS)}），"
+                    "相册向量已清空，会自动重转。"
+                )
+                self._wipe("album_docs.db", "album.index")
+                self.album_wiped = True
 
             from astrbot.core.db.vec_db.faiss_impl.vec_db import FaissVecDB
 
@@ -137,7 +152,7 @@ class Vectors:
             logger.warning(f"[AstrLover] 记忆向量检索失败：{e}")
             return []
 
-    # ---- album 库（一张图四段，meta={img, seg}）----
+    # ---- album 库（一张图三段，meta={img, seg}）----
     async def add_album_segment(self, text: str, meta: dict) -> str:
         if not await self.ensure():
             raise RuntimeError("Embedding 不可用")
