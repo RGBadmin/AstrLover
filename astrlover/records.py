@@ -313,16 +313,20 @@ class Records:
             mid = await self.add_milestone(bits[0], title, mkind, source="user")
             return f"记下了 m{mid}：{bits[0]} {title}（{mkind}）"
         if kind in ("s", "schedule", "日程"):
-            # /rec add s 14:00-16:00 和小雅逛街
+            # /rec add s 14:00-16:00 和小雅逛街          → 今天
+            # /rec add s 2026-08-12 14:00-16:00 和小雅逛街 → 指定那天
+            date = self.app.clock.today_str()
+            if m := re.match(r"^(\d{4}-\d{2}-\d{2})\s+(.+)$", text):
+                date, text = m.group(1), m.group(2)
             m = re.match(r"^(\d{1,2}:\d{2})\s*[-~]\s*(\d{1,2}:\d{2})\s+(.+)$", text)
             if not m:
-                return "用法：/rec add s 14:00-16:00 和小雅逛街"
-            sid = await self.app.db.execute(
-                "INSERT INTO schedule(date, kind, start_hm, end_hm, activity, status, notes) "
-                "VALUES (?,'activity',?,?,?,'planned','')",
-                (self.app.clock.today_str(), m.group(1), m.group(2), m.group(3)),
+                return "用法：/rec add s [2026-08-12] 14:00-16:00 和小雅逛街（不写日期就是今天）"
+            sid = await self.app.dao.add_schedule_item(
+                date, m.group(1), m.group(2), m.group(3), source="user"
             )
-            return f"记下了 s{sid}：{m.group(1)}~{m.group(2)} {m.group(3)}"
+            if not sid:
+                return f"{date} {m.group(1)} 已经有同一件事了，没重复记。"
+            return f"记下了 s{sid}：{date} {m.group(1)}~{m.group(2)} {m.group(3)}"
         return "能手动加的类型：f 事实 / e 事件 / m 纪念日 / s 日程"
 
     async def edit(self, rid: str, text: str) -> str:

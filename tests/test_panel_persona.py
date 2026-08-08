@@ -64,3 +64,43 @@ def test_persona_not_ok_when_empty(linked_app):
         await app.terminate()
 
     run(go())
+
+
+def test_health_explains_every_failure(linked_app):
+    """模块健康：每项都得说清楚为什么，光一个 ❌ 没法排查。"""
+
+    async def go():
+        app = await linked_app()
+        from astrlover.panel.api import PanelApi
+
+        rows = await PanelApi(app)._health()
+        names = [h["name"] for h in rows]
+        assert names == ["向量库", "视觉解析", "轻量模型", "生图", "语音"]
+        for h in rows:
+            assert h["why"], f"{h['name']} 没给理由"
+            assert isinstance(h["ok"], bool)
+        # 没配的那几项要指到具体去哪配
+        vec = next(h for h in rows if h["name"] == "向量库")
+        assert not vec["ok"] and "向量模型" in vec["why"]
+        await app.terminate()
+
+    run(go())
+
+
+def test_vector_health_is_a_real_probe(linked_app):
+    """向量库这项必须真去试一次。
+
+    以前读的是 vectors.available——那是"初始化成功过没有"，而初始化是
+    惰性的：配好了但还没人检索过就一直 False，看起来像没配好。
+    """
+
+    async def go():
+        app = await linked_app()
+        from astrlover.panel.api import PanelApi
+
+        assert not app.vectors.available and not app.vectors._init_failed
+        await PanelApi(app)._health()
+        assert app.vectors._init_failed, "_health 没有真的去试"
+        await app.terminate()
+
+    run(go())

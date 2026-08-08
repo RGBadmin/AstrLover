@@ -62,7 +62,7 @@ class Heartbeat:
             return
 
         # 3. 生活推进：今天没日程她自己排一个，然后按时间推进
-        await app.life.ensure_today_plan()
+        await app.life.ensure_today_rhythm()
         await app.life.advance()
 
         # 4. 记忆沉淀（对话空闲时）

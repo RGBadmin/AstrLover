@@ -128,7 +128,7 @@ class App:
         self.dao = Dao(self.db)
         await self.conf.load(self.dao)
         self.vectors = Vectors(self.vec_dir, self.conf)
-        self.llm = LLM(self.context, self.cfg)
+        self.llm = LLM(self.context, self.cfg, self.conf)
 
         self.records = Records(self)
         self.vision = VisionClient(self.conf)
@@ -298,6 +298,8 @@ class App:
             self.vision._gate = None          # 并发数可能变了
         if any(k.startswith("ig_") for k in changed):
             self.imagegen = ImageGen(self)    # 后端顺序/密钥变了，重建降级链
+        if any(k.startswith("light_") for k in changed):
+            self.llm = LLM(self.context, self.cfg, self.conf)
         if any(k.startswith("embed_") for k in changed):
             # 之前配错过就已经标记为"初始化失败"，不重置的话改对了也要等重启
             self.vectors.reset()

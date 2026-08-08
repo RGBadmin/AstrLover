@@ -1,7 +1,9 @@
-"""模型路由：主对话模型 / 轻量决策模型 / 视觉模型 的统一入口。
+"""模型路由：主对话模型 / 轻量决策模型 的统一入口。
 
-成本意识：对话走强模型；心跳决策、意图解析等高频调用走轻模型；
-图库打标默认主模型读图、可切换独立 VLM。全部经 AstrBot Provider 体系（供应商中立）。
+对话走**会话当前模型**——那是 AstrBot 管线本来就在用的那个，插件不另配。
+记忆沉淀、意图解析这些高频杂活走**轻量模型**：地址/Key/模型在插件自己的
+设置里（跟视觉、向量一个路子），报错也落在插件自己的日志上。
+留空则回退到会话当前模型——不配也能跑，只是这些杂活也走大模型、贵一点。
 """
 
 import asyncio
@@ -10,13 +12,16 @@ import re
 
 from astrbot.api import logger
 
+from .light.client import LightClient, LightError
+
 _JSON_RE = re.compile(r"[\[{].*[\]}]", re.S)
 
 
 class LLM:
-    def __init__(self, context, cfg):
+    def __init__(self, context, cfg, conf=None):
         self.context = context
         self.cfg = cfg
+        self.light_client = LightClient(conf) if conf is not None else None
         self.owner_umo: str | None = None  # 主人会话，用于 get_using_provider 兜底
 
     # ---- Provider 解析 ----
@@ -40,35 +45,19 @@ class LLM:
         """对话主模型 = 会话当前模型（管线模式下由 AstrBot 决定）。"""
         return self._using()
 
-    def light_provider(self):
-        return self._by_id(getattr(self.cfg, "light_provider_id", "")) or self.chat_provider()
-
-    def vlm_provider(self):
-        """图片打标由 presence 层的独立视觉 API 负责；此处仅兜底。"""
-        return self.chat_provider()
+    @property
+    def light_ready(self) -> bool:
+        return bool(self.light_client and self.light_client.configured)
 
     # ---- 调用 ----
-    async def _call(
-        self,
-        provider,
-        *,
-        prompt: str | None = None,
-        contexts: list[dict] | None = None,
-        system_prompt: str | None = None,
-        image_urls: list[str] | None = None,
-        retries: int = 1,
-    ) -> str:
+    async def _call(self, provider, prompt: str, system_prompt: str | None,
+                    retries: int = 1) -> str:
         if provider is None:
-            raise RuntimeError("没有可用的 LLM Provider（请检查模型配置）")
+            raise RuntimeError("没有可用的模型：轻量模型没配，会话也没有当前模型")
         last_err: Exception | None = None
         for attempt in range(retries + 1):
             try:
-                resp = await provider.text_chat(
-                    prompt=prompt,
-                    contexts=contexts,
-                    system_prompt=system_prompt,
-                    image_urls=image_urls,
-                )
+                resp = await provider.text_chat(prompt=prompt, system_prompt=system_prompt)
                 text = getattr(resp, "completion_text", None) or ""
                 if text.strip():
                     return text.strip()
@@ -77,43 +66,30 @@ class LLM:
                 last_err = e
                 if attempt < retries:
                     await asyncio.sleep(1.5 * (attempt + 1))
-        raise RuntimeError(f"LLM 调用失败：{last_err}")
-
-    async def chat(
-        self,
-        *,
-        prompt: str | None = None,
-        contexts: list[dict] | None = None,
-        system_prompt: str | None = None,
-        image_urls: list[str] | None = None,
-    ) -> str:
-        return await self._call(
-            self.chat_provider(),
-            prompt=prompt,
-            contexts=contexts,
-            system_prompt=system_prompt,
-            image_urls=image_urls,
-        )
+        raise RuntimeError(f"模型调用失败：{last_err}")
 
     async def light(self, prompt: str, system_prompt: str | None = None) -> str:
-        return await self._call(self.light_provider(), prompt=prompt, system_prompt=system_prompt)
+        """配了就走自管的轻量模型，没配就用会话当前模型。"""
+        if self.light_ready:
+            try:
+                return await self.light_client.chat(prompt, system_prompt or "")
+            except LightError as e:
+                # 配了却用不了要说出来——静默回退会让人以为省着钱呢
+                logger.warning(f"[AstrLover] 轻量模型不可用，这次退回会话模型：{e}")
+        return await self._call(self.chat_provider(), prompt, system_prompt)
 
     async def light_json(self, prompt: str, system_prompt: str | None = None):
         """要求轻模型输出 JSON；解析失败自动补救一次，仍失败返回 None。"""
         sp = (system_prompt or "") + "\n只输出合法 JSON，不要解释，不要代码块围栏。"
         for attempt in range(2):
             try:
-                raw = await self._call(self.light_provider(), prompt=prompt, system_prompt=sp)
-                parsed = self.extract_json(raw)
+                parsed = self.extract_json(await self.light(prompt, sp))
                 if parsed is not None:
                     return parsed
             except Exception as e:
                 logger.warning(f"[AstrLover] light_json 调用失败（第{attempt + 1}次）：{e}")
             prompt = "你上次的输出不是合法 JSON。重新只输出 JSON。\n" + prompt
         return None
-
-    async def vlm(self, prompt: str, image_path: str) -> str:
-        return await self._call(self.vlm_provider(), prompt=prompt, image_urls=[image_path])
 
     @staticmethod
     def extract_json(raw: str):

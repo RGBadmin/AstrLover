@@ -42,9 +42,6 @@ class Cfg:
     def heartbeat_minutes(self) -> int:
         return max(1, self._i("life_heartbeat_minutes", 5))
 
-    @property
-    def light_provider_id(self) -> str:
-        return self._s("life_light_provider_id")
 
 
     @property

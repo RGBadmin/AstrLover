@@ -5,6 +5,7 @@
 事实抽取是纯粹的信息整理，走轻模型，不需要人格。
 """
 
+import re
 import time
 from datetime import datetime, timedelta
 
@@ -16,10 +17,18 @@ _FACTS_SYSTEM = (
     "你是记忆整理助手。从对话片段中提取值得长期记住的原子事实，并对照已有事实找出已过时的。"
     "事实要短、独立、无上下文依赖。subject 取值：user（关于他）、self（关于她自己）、"
     "npc:名字（关于她生活里的人物）。类别示例：生日/喜好/禁忌/工作/约定/经历/心事。"
-    '输出 JSON：{"new": [{"subject": "...", "content": "...", "category": "..."}], '
-    '"expire_ids": [数字id], "significant": true或false}。'
-    "没有新东西就输出空数组。significant 表示这轮认识是否明显加深（值得更新小抄）。"
+    "\n\n另外挑出**已经约好具体时间**的安排（commitments）："
+    "必须同时有明确的日期和时刻才算，「这周六下午两点去看电影」算，"
+    "「改天吧」「有空一起」「最近想去」不算；已经发生过的不算。"
+    "今天是 {today}（{weekday}），相对说法按这个折算成 YYYY-MM-DD。"
+    '\n\n输出 JSON：{{"new": [{{"subject": "...", "content": "...", "category": "..."}}], '
+    '"expire_ids": [数字id], "significant": true或false, '
+    '"commitments": [{{"date": "2026-08-12", "start": "14:00", "end": "17:00", "what": "跟小雅逛街"}}]}}。'
+    "没有就输出空数组。significant 表示这轮认识是否明显加深（值得更新小抄）。"
 )
+
+_WEEKDAY_CN = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 _CHEATSHEET_BRIEF = (
     "整理一下你对他的认知小抄。用你自己的口吻重写（250 字以内），保持三块："
@@ -68,10 +77,15 @@ class MemoryPipeline:
 
         result = await app.llm.light_json(
             f"已有事实：\n{facts_list or '（无）'}\n\n最近对话：\n{convo}",
-            system_prompt=_FACTS_SYSTEM,
+            system_prompt=_FACTS_SYSTEM.format(
+                today=app.clock.today_str(),
+                weekday=_WEEKDAY_CN[app.clock.now().weekday()],
+            ),
         )
         if not isinstance(result, dict):
             return
+
+        await self._save_commitments(result.get("commitments") or [])
 
         changed = 0
         for item in result.get("new") or []:
@@ -100,6 +114,29 @@ class MemoryPipeline:
             await self.revise_cheatsheet()
         if changed:
             logger.info(f"[AstrLover] 记忆沉淀：{changed} 处变化。")
+
+    async def _save_commitments(self, items) -> int:
+        """聊天里约好的事写进日程。只收今天及以后的——过去的不是安排。"""
+        app = self.app
+        if not isinstance(items, list) or app.life is None:
+            return 0
+        today = app.clock.today_str()
+        saved = []
+        for it in items[:5]:
+            if not isinstance(it, dict):
+                continue
+            date = str(it.get("date") or "").strip()
+            if not _DATE_RE.fullmatch(date) or date < today:
+                continue
+            rid = await app.life.add_commitment(
+                date, str(it.get("start") or ""), str(it.get("end") or ""),
+                str(it.get("what") or ""), source="chat",
+            )
+            if rid:
+                saved.append(f"{date} {it.get('start')} {it.get('what')}")
+        if saved:
+            logger.info("[AstrLover] 记下约好的事：" + "；".join(saved))
+        return len(saved)
 
     async def revise_cheatsheet(self):
         """核心小抄：她自己修订对他的认知。"""

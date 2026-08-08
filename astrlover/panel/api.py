@@ -67,10 +67,7 @@ class PanelApi:
             "moments": await app.moments.count(),
             "unanswered": int(await app.dao.kv_get("unanswered", 0) or 0),
             "last_user_minutes": int((time.time() - last_user) / 60) if last_user else None,
-            "vision_ok": app.vision.ready(),
-            "vector_ok": app.vectors.available,
-            "imagegen_ok": bool(app.imagegen and app.imagegen.available),
-            "tts_ok": bool(app.voice and app.voice.tts_ready),
+            "health": await self._health(),
             "channel_ok": bool(app.moments.channel()),
             # 只报"人设读到了没有"，不把人设内容搬到面板上——她是谁只有一个出处
             "persona_ok": await self._persona_ok(),
@@ -88,6 +85,49 @@ class PanelApi:
                 "schedule": await app.dao.day_schedule(app.clock.today_str()),
             })
         return json_response(data)
+
+    async def _health(self) -> list[dict]:
+        """每项都要说清楚"为什么是 ❌"，光一个叉没法排查。
+
+        向量库这项以前读的是 vectors.available——那是"已经成功初始化过"，
+        而初始化是惰性的：配好了但还没人检索过，它就一直是 False，
+        看起来像没配好。这里真去 ensure() 一次（成功后有缓存，失败会短路）。
+        """
+        app = self.app
+        out = []
+
+        vec_ok = await app.vectors.ensure()
+        out.append({
+            "name": "向量库", "ok": vec_ok,
+            "why": f"{app.vectors.client.model}（{app.vectors.client.get_dim()} 维）" if vec_ok
+                   else (app.vectors.last_error or "没配（「向量模型」组）"),
+        })
+
+        out.append({
+            "name": "视觉解析", "ok": app.vision.ready(),
+            "why": "已配置" if app.vision.ready() else "地址 / Key / 模型没填全（「视觉解析」组）",
+        })
+
+        light = app.llm.light_client if app.llm else None
+        out.append({
+            "name": "轻量模型", "ok": bool(light and light.configured),
+            "why": light.describe() if light and light.configured
+                   else "没配，杂活会走会话当前模型（能用，只是贵）",
+        })
+
+        backends = [b.name for b in app.imagegen.backends] if app.imagegen else []
+        out.append({
+            "name": "生图", "ok": bool(backends),
+            "why": " → ".join(backends) if backends
+                   else "三个后端都没配（「生图」组：nanobanana / comfyui / novelai）",
+        })
+
+        tts = bool(app.voice and app.voice.tts_ready)
+        out.append({
+            "name": "语音", "ok": tts,
+            "why": "已配置" if tts else "AstrBot 配置页的 TTS Provider ID 没填，或那个 id 找不到",
+        })
+        return out
 
     async def _persona_ok(self) -> bool:
         # 桥挂在 app 上，不在 director_bot 上——之前写错成 director_bot.bridge，
@@ -148,7 +188,18 @@ class PanelApi:
             return json_response({"message": await self.app.vision_command("test")})
         if what == "embed":
             return json_response({"message": await self.app.album.embedder.probe()})
-        return error_response("what 必须是 vision 或 embed")
+        if what == "light":
+            client = self.app.llm.light_client
+            if client is None or not client.configured:
+                return json_response({"message": "没配（地址 / Key / 模型三项都要填）"})
+            try:
+                said = await client.chat("说「好」这一个字，不要别的。")
+                return json_response(
+                    {"message": f"通了：{client.describe()}\n它说：{said[:60]}"}
+                )
+            except Exception as e:
+                return json_response({"message": f"用不了：{type(e).__name__}: {e}"})
+        return error_response("what 必须是 vision / embed / light")
 
     @safe
     async def export(self):

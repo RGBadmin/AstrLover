@@ -230,11 +230,9 @@ def scheduled_app(app_factory):
     async def build():
         app = app_factory()
         await app.initialize()
-        await app.dao.replace_day_schedule(app.clock.today_str(), [
-            {"kind": "wake", "start_hm": "08:00", "end_hm": "08:00", "activity": "起床"},
-            {"kind": "activity", "start_hm": "09:00", "end_hm": "18:00", "activity": "上班"},
-            {"kind": "sleep", "start_hm": "22:30", "end_hm": "22:30", "activity": "睡觉"},
-        ])
+        today = app.clock.today_str()
+        await app.dao.set_rhythm(today, "08:00", "22:30")
+        await app.dao.add_schedule_item(today, "09:00", "18:00", "上班", source="user")
         return app
 
     return build

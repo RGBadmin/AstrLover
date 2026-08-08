@@ -44,6 +44,12 @@ SPEC: tuple[S, ...] = (
     S(key='vision_block_retries', group='视觉解析', label='生成被拦重试次数', type='int', default=2, hint='finishReason 那类。带采样随机性，重试常常能过。'),
     S(key='vision_hard_retries', group='视觉解析', label='输入判死重试次数', type='int', default=1, hint='blockReason 那类。是对图本身的判定，重发基本无效。'),
     # ---- 相册 ----
+    S(key='light_api_format', group='轻量模型', label='接口格式', type='string', default='openai', hint='openai / anthropic / gemini。', options=['openai', 'anthropic', 'gemini']),
+    S(key='light_base_url', group='轻量模型', label='接口地址', type='string', default='', hint='openai 填到 /v1；anthropic、gemini 填到域名。'),
+    S(key='light_api_key', group='轻量模型', label='API Key', type='string', default='', hint=''),
+    S(key='light_model', group='轻量模型', label='模型', type='string', default='', hint='记忆沉淀等杂活用，挑便宜的。留空则用会话当前模型。'),
+    S(key='light_max_tokens', group='轻量模型', label='最大输出', type='int', default=1024, hint=''),
+    S(key='light_timeout', group='轻量模型', label='超时（秒）', type='int', default=60, hint=''),
     S(key='embed_api_format', group='向量模型', label='接口格式', type='string', default='openai', hint='openai 或 gemini。', options=['openai', 'gemini']),
     S(key='embed_base_url', group='向量模型', label='接口地址', type='string', default='', hint='openai 填到 /v1；gemini 填到域名。'),
     S(key='embed_api_key', group='向量模型', label='API Key', type='string', default='', hint=''),
@@ -83,7 +89,6 @@ SPEC: tuple[S, ...] = (
     # ---- 生命模拟 ----
     S(key='life_timezone', group='生命模拟', label='她所在时区', type='string', default='Asia/Shanghai'),
     S(key='life_heartbeat_minutes', group='生命模拟', label='心跳间隔（分钟）', type='int', default=5, hint='推进生活与记忆维护，纯代码不耗 token。'),
-    S(key='life_light_provider_id', group='生命模拟', label='轻量模型 Provider ID', type='string', default='', hint='记忆沉淀等高频调用。留空用会话当前模型。'),
     # ---- 生图 ----
     S(key='ig_backend_order', group='生图', label='后端优先顺序', type='list', default=['nanobanana', 'comfyui', 'novelai'], hint='按序降级：前一个失败自动试下一个。'),
     S(key='ig_nb_api_key', group='生图', label='NanoBanana API Key', type='string', default='', hint='支持参考图，人物一致性最好，建议首选。'),

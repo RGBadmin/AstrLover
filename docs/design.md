@@ -33,7 +33,7 @@
 main.py                  仅 @filter 注册与薄委托（钩子/12 个工具/静默拦截）
 astrlover/
 ├── app.py               装配中心 + 管线钩子实现 + 控制台委托（gallery/vision/status）
-├── settings.py          设置 SPEC（63 项）+ Settings：接线取配置页，其余取库
+├── settings.py          设置 SPEC（68 项）+ Settings：接线取配置页，其余取库
 ├── config.py            生命层配置视图（读同一个 Settings）
 ├── tools.py             LLM 工具实现体
 ├── actions.py           排期执行 = 控制台指令重放
@@ -47,7 +47,7 @@ astrlover/
 ├── presence/            moments（发布/时间线注入）· profile（头像/签名/表情）· limits（频控）
 ├── director/            bot（PTB 传输层）· console（命令）· bridge（说话/写历史/按人格生成）
 ├── heart/               heartbeat（心跳）· proactive（意愿式主动）· impulses（生活冲动）
-├── life/                clock（时间感知）· engine（日程自生成+作息读记录）· mood（情绪半衰期）
+├── life/                clock（时间感知）· engine（作息按天问 + 约定跨天存）· mood（情绪半衰期）
 ├── memory/              pipeline（事实/小抄/日记/周记/召回）· transcript（读 AstrBot 对话历史）
 ├── persona/prompt.py    注入块组装（人设不在这里）
 ├── records.py           统一记录门面：增删改 + 生命周期清理
@@ -55,6 +55,7 @@ astrlover/
 ├── voice/               TTS → ogg 语音条
 ├── panel/ + pages/panel Web 面板（Plugin Pages + register_web_api）
 ├── markers.py           从她的回复里剥内部标记（improv / told / found）
+├── light/client.py      自管轻量模型（openai / anthropic / gemini）
 ├── embed/client.py      自管向量模型（openai / gemini），不走 AstrBot Provider
 └── store/               db（单库 schema）· dao · vectors（memory + album 两库）· export
 ```
@@ -99,13 +100,17 @@ AstrBot 本来就带时间，不重复打）；她模仿上下文自写的时间
 每类记录都有「自创建 → 自销毁」的生命周期，也都能手动增删改
 （控制台 /rec、面板记录页），编号带前缀 f12 / e5 / m1。
 
-**作息为什么不做配置**：从自由文本稳定提取不出来，提取出来还会跟人格
-脱钩。改成她每天自己排一次日程记录——排错了直接改那条记录，
-人设改了第二天自动跟上。心跳只读记录，没有记录就不做作息假设。
+**日程分两层**：作息（wake/sleep）确实按天，每天问她一次两个时刻——
+从人格自由文本里稳定提取不出来，提取出来还会跟人格脱钩，让她自己说。
+安排则是**跨天、稀疏、带日期**的：来源是聊天里真约好的事（记忆沉淀
+那一趟顺带抽，必须同时有明确日期和时刻）或手动加。不铺满一天——
+没安排的时段就说没安排，不编；编出来的"她此刻在追剧"经不起追问。
+与排期（pending_actions）不重复：日程到点只改状态（她变成在做那件事），
+排期到点真的执行一条控制台指令（发消息/发照片）。
 
 **D10 配置两处、各管各的**：AstrBot 插件配置页只留 5 项接线
 （恋人 id、控制台 token/管理员、TTS Provider id、生命层开关）——那几项
-决定"插件怎么找到你和你的服务"，装机设一次。其余 63 项在 settings.py
+决定"插件怎么找到你和你的服务"，装机设一次。其余 68 项在 settings.py
 声明、存数据库、由面板设置页编辑：它们都是**看着结果反复调**的东西
 （重试次数、冷却、top_k、提示词），本来就该在能看到结果的地方调，
 所以设置页旁边直接放了视觉/向量的「测一下」按钮。
@@ -123,6 +128,11 @@ editable / deletable），每条渲染成一张可就地编辑与删除的卡片
 
 **D13 生命层可整个关掉**：`life_enabled=false` 时 `App.ready=False`，
 presence 能力照常工作；生图在没有外观记录时退化为纯情境描述。
+
+**D15 轻量模型自管**：记忆沉淀、意图解析这些高频杂活走插件自己配的
+模型（openai/anthropic/gemini 三种格式），不去 AstrBot 供应商注册表按 id 找。
+留空回退到会话当前模型——那是管线本来就在用的，不算另一套依赖。
+配了却连不上时**记警告再回退**：静默回退会让人以为一直在省钱。
 
 **D14 向量模型自管**：地址/Key/模型/维度在插件设置里，不走 AstrBot 的
 Embedding Provider——报错落在插件自己的日志和面板上，能直接看出是 401
@@ -145,6 +155,6 @@ Embedding Provider——报错落在插件自己的日志和面板上，能直�
 
 ## 五、测试
 
-`python -m pytest tests` —— 93 项，不需要安装 AstrBot：
+`python -m pytest tests` —— 110 项，不需要安装 AstrBot：
 `conftest.py` 提供 astrbot 桩模块，`test_smoke_app.py` 用假 Context 真正启动
 App 跑通装配、钩子注入、相册扫描检索、图片折叠、控制台命令与全部降级路径。

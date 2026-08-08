@@ -20,13 +20,11 @@ def test_flat_reads():
     cfg = Cfg({
         "life_timezone": " Asia/Tokyo ",
         "life_heartbeat_minutes": 10,
-        "life_light_provider_id": " light ",
         "ig_backend_order": ["nanobanana", ""],
         "ig_nb_api_key": "k",
     })
     assert cfg.timezone == "Asia/Tokyo"
     assert cfg.heartbeat_minutes == 10
-    assert cfg.light_provider_id == "light"
     assert cfg.imagegen_order == ["nanobanana"]
     assert cfg.imagegen_backend("nanobanana")["api_key"] == "k"
 

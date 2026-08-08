@@ -53,8 +53,12 @@ async function call(fn) {
 /* ================= 总览 ================= */
 async function renderOverview() {
   const d = await call(() => bridge.apiGet("overview"));
-  const health = (label, ok) =>
-    el("span", { class: ok ? "ok" : "bad" }, `${label}${ok ? "✅" : "❌"}  `);
+  // 光一个 ❌ 没法排查，把原因跟在后面
+  const healthRow = (h) =>
+    el("div", { style: "margin-bottom:4px" }, [
+      el("span", { class: h.ok ? "ok" : "bad" }, `${h.ok ? "✅" : "❌"} ${h.name}`),
+      el("span", { class: "meta" }, `　${h.why || ""}`),
+    ]);
   const sched = (d.schedule || [])
     .map((s) => `${s.start_hm}~${s.end_hm} ${s.activity}（${s.status}）`)
     .join("\n") || "（今天还没生成日程）";
@@ -80,12 +84,7 @@ async function renderOverview() {
       ]),
       el("div", { class: "card wide" }, [
         el("h3", {}, "模块健康"),
-        el("div", { class: "big" }, [
-          health("向量库", d.vector_ok),
-          health("生图", d.imagegen_ok),
-          health("语音", d.tts_ok),
-          el("span", { class: "meta" }, "　相册与照片能力见控制台 /presence /gallery"),
-        ]),
+        el("div", { class: "big" }, (d.health || []).map(healthRow)),
       ]),
       el("div", { class: "card wide" }, [el("h3", {}, "今日日程"), el("div", { class: "big" }, sched)]),
       el("div", { class: "card wide" }, [
@@ -278,6 +277,18 @@ async function renderSettings() {
           }, "恢复默认"),
         ]),
         it.hint ? el("div", { class: "meta" }, it.hint) : "",
+      ]));
+    }
+    if (group === "轻量模型") {
+      blocks.push(el("div", { class: "toolbar" }, [
+        el("button", {
+          class: "ghost",
+          onclick: async () => {
+            toast("正在测…");
+            const r = await call(() => bridge.apiPost("probe", { what: "light" }));
+            alert(r.message);
+          },
+        }, "测一下轻量模型"),
       ]));
     }
     if (group === "视觉解析") {

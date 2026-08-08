@@ -2,6 +2,7 @@
 
 import json
 import time
+from datetime import datetime, timedelta
 
 from .db import Database
 
@@ -105,19 +106,45 @@ class Dao:
 
 
     # ================= schedule =================
-    async def replace_day_schedule(self, date: str, items: list[dict]):
-        await self.db.execute("DELETE FROM schedule WHERE date=? AND status='planned'", (date,))
-        for it in items:
-            await self.db.execute(
-                "INSERT INTO schedule(date, kind, start_hm, end_hm, activity, status, notes) "
-                "VALUES (?,?,?,?,?,?,?)",
-                (date, it.get("kind", "activity"), it["start_hm"], it["end_hm"],
-                 it["activity"], it.get("status", "planned"), it.get("notes", "")),
-            )
-
     async def day_schedule(self, date: str) -> list[dict]:
         return await self.db.fetchall(
             "SELECT * FROM schedule WHERE date=? ORDER BY start_hm", (date,)
+        )
+
+    async def set_rhythm(self, date: str, wake: str, sleep: str):
+        """当天的起床/睡觉两个点。重复调用就地覆盖，不碰当天的安排。"""
+        await self.db.execute(
+            "DELETE FROM schedule WHERE date=? AND kind IN ('wake','sleep')", (date,)
+        )
+        for kind, hm, what in (("wake", wake, "起床"), ("sleep", sleep, "睡觉")):
+            await self.db.execute(
+                "INSERT INTO schedule(date, kind, start_hm, end_hm, activity, status, notes) "
+                "VALUES (?,?,?,?,?,'planned','')",
+                (date, kind, hm, hm, what),
+            )
+
+    async def add_schedule_item(self, date: str, start_hm: str, end_hm: str,
+                                activity: str, source: str = "chat") -> int:
+        """加一件约好的事；同一天同一时刻的同一件事不重复记。"""
+        dup = await self.db.fetchone(
+            "SELECT id FROM schedule WHERE date=? AND start_hm=? AND activity=? AND kind='activity'",
+            (date, start_hm, activity),
+        )
+        if dup:
+            return 0
+        return await self.db.execute(
+            "INSERT INTO schedule(date, kind, start_hm, end_hm, activity, status, notes) "
+            "VALUES (?,'activity',?,?,?,'planned',?)",
+            (date, start_hm, end_hm, activity, source),
+        )
+
+    async def upcoming_schedule(self, after_date: str, days: int = 7) -> list[dict]:
+        """明天起 N 天内已经定好的事——她得提前知道，不能到当天才想起来。"""
+        end = (datetime.strptime(after_date, "%Y-%m-%d") + timedelta(days=days)).strftime("%Y-%m-%d")
+        return await self.db.fetchall(
+            "SELECT * FROM schedule WHERE kind='activity' AND status!='cancelled' "
+            "AND date > ? AND date <= ? ORDER BY date, start_hm",
+            (after_date, end),
         )
 
     async def set_schedule_status(self, item_id: int, status: str, notes: str | None = None):
