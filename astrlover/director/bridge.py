@@ -9,6 +9,8 @@ from datetime import datetime
 
 from astrbot.api import logger
 
+from ..markers import strip_stamp
+
 STAMP_FMT = "[%m-%d %H:%M]"
 
 DEFAULT_ACT = (
@@ -68,7 +70,8 @@ class DirectorBridge:
             # 时间戳只给她自己的消息打——他的消息 AstrBot 本来就带时间
             if role == "assistant" and app.conf.get("stamp_own_messages", True):
                 tz = app.clock.tz if app.clock else None
-                body = f"{datetime.now(tz).strftime(STAMP_FMT)} {text}"
+                # 先剥再打：她可能已经照着历史自己写了一个，不剥就叠两层
+                body = f"{datetime.now(tz).strftime(STAMP_FMT)} {strip_stamp(text)}"
             history.append({"role": role, "content": body})
             await cm.update_conversation(umo, cid, history=history)
             return True
@@ -196,6 +199,4 @@ class DirectorBridge:
         if not text:
             raise RuntimeError("模型返回空内容（thinking 模型可能把配额烧在思考上了）")
         # 她照着上下文模仿的时间戳剥掉——真正的戳由 append_assistant 打
-        import re
-
-        return re.sub(r"^[ \t]*\[\d{2}-\d{2} \d{2}:\d{2}\][ \t]*", "", text, flags=re.M).strip()
+        return strip_stamp(text).strip()

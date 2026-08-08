@@ -142,12 +142,41 @@ class _FakeConvManager:
         return []
 
 
+class _FakePersonaManager:
+    """AstrBot 的人格管理器：她是谁的唯一出处。
+
+    真环境里插件只读不写；假环境给一份，才测得出"读到了没有"。
+    """
+
+    def __init__(self, text="我叫桃桃，在郑州做前台。"):
+        self.text = text
+
+    async def resolve_selected_persona(self, **_kw):
+        if not self.text:
+            raise RuntimeError("没有人格")
+        return None, {"prompt": self.text}, None, None
+
+    def get_persona_v3_by_id(self, _pid):
+        return {"prompt": self.text} if self.text else None
+
+    async def get_default_persona_v3(self, **_kw):
+        return {"prompt": self.text} if self.text else None
+
+
+class _FakeConfigMgr:
+    @staticmethod
+    def get_conf(_umo):
+        return {"provider_settings": {}}
+
+
 class _FakeContext:
-    def __init__(self):
+    def __init__(self, persona="我叫桃桃，在郑州做前台。"):
         self.web_apis = []
         self.registered_web_apis = []     # 路由表：面板端点测试按它逐个调用
         self.history = []
         self.conversation_manager = _FakeConvManager(self)
+        self.persona_manager = _FakePersonaManager(persona)
+        self.astrbot_config_mgr = _FakeConfigMgr()
 
     def register_web_api(self, route, handler, methods, desc):
         self.web_apis.append(route)

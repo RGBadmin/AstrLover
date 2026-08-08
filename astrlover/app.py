@@ -20,7 +20,7 @@ except ImportError:
 
 from .actions import ActionExecutor
 from .album.service import Album
-from .markers import extract_internal
+from .markers import extract_internal, strip_stamp
 from .config import Cfg
 from .director.bot import DirectorBot
 from .director.bridge import DirectorBridge
@@ -244,7 +244,9 @@ class App:
         text = getattr(resp, "completion_text", None)
         if not isinstance(text, str) or not text:
             return
-        out = text
+        # 她会照着历史里自己消息开头的 [MM-DD HH:MM] 写一个出来——那是插件
+        # 的记账戳，不该出现在发给他的话里
+        out = strip_stamp(text)
         try:
             out, _n = await self.photo_memory.capture(out)
         except Exception:

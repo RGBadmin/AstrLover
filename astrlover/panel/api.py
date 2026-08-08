@@ -90,13 +90,15 @@ class PanelApi:
         return json_response(data)
 
     async def _persona_ok(self) -> bool:
+        # 桥挂在 app 上，不在 director_bot 上——之前写错成 director_bot.bridge，
+        # 被 getattr 的默认值吞掉，于是绑好了也一直报"没读到"
         umo = self.app.state_target
-        bridge = getattr(self.app.director_bot, "bridge", None)
-        if not umo or bridge is None:
+        if not umo or self.app.bridge is None:
             return False
         try:
-            return bool(await bridge.persona_of(umo))
+            return bool(await self.app.bridge.persona_of(umo))
         except Exception:
+            logger.warning("[AstrLover] 面板读人格失败：", exc_info=True)
             return False
 
     # ------------------------------------------------------------------

@@ -12,6 +12,22 @@ import re
 _IMPROV = re.compile(r"<improv>(.*?)</improv>", re.I | re.S)
 _TOLD = re.compile(r"<(told|found)>\s*(\d+)\s*</\1>", re.I)
 
+# 导演桥给她自己的消息打的 [MM-DD HH:MM] 戳。那是给插件读时间用的记账，
+# 可模型在历史里看到的是同一份文本，下一轮就照着开头写一个——于是戳漏进了
+# 真正发出去的消息，写回历史时还会再叠一层。所以进出两处都剥掉：
+# 时间归时间，正文归正文。
+#
+# 按行剥（她可能分几行说，每行都戳一个），连着几个也一起剥；
+# 位数放宽到 1~2 位，她未必照着 %m-%d 补零。
+_STAMP_HEAD = re.compile(
+    r"^[ \t]*(?:\[\d{1,2}-\d{1,2}[ \t]+\d{1,2}:\d{2}\][ \t]*)+", re.M
+)
+
+
+def strip_stamp(text: str) -> str:
+    """剥掉行首的时间戳。"""
+    return _STAMP_HEAD.sub("", text or "")
+
 
 def extract_internal(text: str) -> tuple[str, list[str], list[int], list[int]]:
     """返回 (清理后的文本, 编造固化, told 事件号, found 事件号)。
