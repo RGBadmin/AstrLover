@@ -208,3 +208,70 @@ def test_signature_changes_with_model(api_server):
         await holder["runner"].cleanup()
 
     run(go())
+
+
+def test_url_tolerates_pasted_paths():
+    """地址栏最常见的错法是连路径一起粘过来，硬拼就是个空正文 404。"""
+    def u(base, fmt="openai", batch=False, model="m"):
+        return EmbedClient(_conf(embed_base_url=base, embed_api_format=fmt,
+                                 embed_model=model))._url(batch)
+
+    # openai：补、不重复补、从视觉那栏抄来的也认
+    assert u("https://x.com/v1") == "https://x.com/v1/embeddings"
+    assert u("https://x.com/v1/") == "https://x.com/v1/embeddings"
+    assert u("https://x.com/v1/embeddings") == "https://x.com/v1/embeddings"
+    assert u("https://x.com/v1/chat/completions") == "https://x.com/v1/embeddings"
+    assert u("https://x.com") == "https://x.com/embeddings"
+
+    # gemini：v1beta 自动补，已经带版本段就不再补
+    assert u("https://g.com", "gemini") == "https://g.com/v1beta/models/m:embedContent"
+    assert u("https://g.com/v1beta", "gemini") == "https://g.com/v1beta/models/m:embedContent"
+    assert u("https://g.com", "gemini", batch=True).endswith(":batchEmbedContents")
+    already = "https://g.com/v1beta/models/m:embedContent"
+    assert u(already, "gemini") == already
+
+
+def test_error_says_which_url(api_server):
+    """404 的正文常常是空的，不带 URL 根本没法自查。"""
+    start, holder = api_server
+
+    async def go():
+        base, _ = await start()
+        c = EmbedClient(_conf(embed_base_url=base + "/nope"))
+        with pytest.raises(EmbedError) as ei:
+            await c.get_embedding("x")
+        msg = str(ei.value)
+        assert "404" in msg and "/nope/embeddings" in msg, msg
+        await holder["runner"].cleanup()
+
+    run(go())
+
+
+def test_empty_body_error_says_so(api_server):
+    """网关返回空正文的 404——用户看到的就是这个，得点破是地址问题。"""
+    start, holder = api_server
+
+    async def go():
+        base, _ = await start()
+
+        async def blank(_req):
+            return web.Response(status=404, text="")
+
+        # 换一个只回空正文的路由
+        app = web.Application()
+        app.router.add_post("/v1/embeddings", blank)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", 0)
+        await site.start()
+        url = f"http://127.0.0.1:{runner.addresses[0][1]}/v1"
+
+        c = EmbedClient(_conf(embed_base_url=url))
+        with pytest.raises(EmbedError) as ei:
+            await c.get_embedding("x")
+        msg = str(ei.value)
+        assert "404" in msg and "/v1/embeddings" in msg and "地址不对" in msg, msg
+        await runner.cleanup()
+        await holder["runner"].cleanup()
+
+    run(go())

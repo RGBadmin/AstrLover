@@ -80,10 +80,22 @@ class EmbedClient:
         return self._sem
 
     def _url(self, batch: bool) -> str:
+        """对粘贴进来的地址容错。
+
+        地址这一栏最常见的错法是**连路径一起粘过来**——从视觉那栏抄来的
+        `.../v1/chat/completions`，或者别处抄来的 `.../v1/embeddings`。
+        硬拼就成了 `.../chat/completions/embeddings`，一个空正文的 404，
+        看报错完全不知道发生了什么。所以这里跟视觉客户端一样先归一。
+        """
+        base = self.base_url
         if self.fmt == "gemini":
+            if ":embedContent" in base or ":batchEmbedContents" in base:
+                return base
             verb = "batchEmbedContents" if batch else "embedContent"
-            return f"{self.base_url}/v1beta/models/{self.model}:{verb}"
-        return f"{self.base_url}/embeddings"
+            head = base if base.rsplit("/", 1)[-1].startswith("v1") else base + "/v1beta"
+            return f"{head}/models/{self.model}:{verb}"
+        base = base.removesuffix("/chat/completions").rstrip("/")
+        return base if base.endswith("/embeddings") else base + "/embeddings"
 
     def _headers(self) -> dict:
         if self.fmt == "gemini":
@@ -136,14 +148,19 @@ class EmbedClient:
                     async with s.post(url, headers=self._headers(), json=payload) as r:
                         body = await r.text()
                         if r.status != 200:
-                            raise EmbedError(f"HTTP {r.status}：{body[:200]}")
+                            # 404 的正文常常是空的，不带上 URL 就没法自查
+                            raise EmbedError(
+                                f"HTTP {r.status}（POST {url}）"
+                                + (f"：{body[:200]}" if body.strip() else
+                                   "，响应是空的——多半是这个地址不对")
+                            )
                         import json
 
                         data = json.loads(body)
             except EmbedError:
                 raise
             except Exception as e:
-                raise EmbedError(f"{type(e).__name__}: {e}") from e
+                raise EmbedError(f"{type(e).__name__}: {e}（POST {url}）") from e
         return self._unpack(self.fmt, data, len(texts))
 
     # ------------------------------------------------------------------ 接口

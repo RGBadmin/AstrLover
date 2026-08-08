@@ -67,11 +67,19 @@ class LightClient:
 
     # ------------------------------------------------------------------ 传输
     def _url(self) -> str:
+        """跟视觉客户端一样对粘贴进来的地址容错：已经带路径就不再补。"""
+        base = self.base_url
         if self.fmt == "anthropic":
-            return f"{self.base_url}/v1/messages"
+            if base.endswith("/messages"):
+                return base
+            return base + ("/messages" if base.endswith("/v1") else "/v1/messages")
         if self.fmt == "gemini":
-            return f"{self.base_url}/v1beta/models/{self.model}:generateContent"
-        return f"{self.base_url}/chat/completions"
+            if ":generateContent" in base:
+                return base
+            head = base if base.rsplit("/", 1)[-1].startswith("v1") else base + "/v1beta"
+            return f"{head}/models/{self.model}:generateContent"
+        base = base.removesuffix("/embeddings").rstrip("/")
+        return base if base.endswith("/chat/completions") else base + "/chat/completions"
 
     def _headers(self) -> dict:
         h = {"Content-Type": "application/json"}
@@ -135,20 +143,25 @@ class LightClient:
         if not self.configured:
             raise LightError("轻量模型没配全（地址 / Key / 模型三项都要填）")
         timeout = aiohttp.ClientTimeout(total=self.timeout)
+        url = self._url()
         try:
             async with aiohttp.ClientSession(timeout=timeout) as s:
                 async with s.post(
-                    self._url(), headers=self._headers(),
+                    url, headers=self._headers(),
                     json=self._payload(prompt, system_prompt or ""),
                 ) as r:
                     raw = await r.text()
                     if r.status != 200:
-                        raise LightError(f"HTTP {r.status}：{raw[:200]}")
+                        raise LightError(
+                            f"HTTP {r.status}（POST {url}）"
+                            + (f"：{raw[:200]}" if raw.strip() else
+                               "，响应是空的——多半是这个地址不对")
+                        )
                     data = json.loads(raw)
         except LightError:
             raise
         except Exception as e:
-            raise LightError(f"{type(e).__name__}: {e}") from e
+            raise LightError(f"{type(e).__name__}: {e}（POST {url}）") from e
         text = self._text(self.fmt, data)
         if not text:
             raise LightError("模型返回了空内容")

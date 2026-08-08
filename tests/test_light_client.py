@@ -212,3 +212,32 @@ def test_llm_falls_back_when_light_broken(api):
         await holder["runner"].cleanup()
 
     run(go())
+
+
+def test_url_tolerates_pasted_paths():
+    def u(base, fmt="openai", model="m"):
+        return LightClient(_conf(light_base_url=base, light_api_format=fmt,
+                                 light_model=model))._url()
+
+    assert u("https://x.com/v1") == "https://x.com/v1/chat/completions"
+    assert u("https://x.com/v1/chat/completions") == "https://x.com/v1/chat/completions"
+    assert u("https://x.com/v1/embeddings") == "https://x.com/v1/chat/completions"
+    assert u("https://a.com", "anthropic") == "https://a.com/v1/messages"
+    assert u("https://a.com/v1", "anthropic") == "https://a.com/v1/messages"
+    assert u("https://a.com/v1/messages", "anthropic") == "https://a.com/v1/messages"
+    assert u("https://g.com", "gemini") == "https://g.com/v1beta/models/m:generateContent"
+    assert u("https://g.com/v1beta", "gemini") == "https://g.com/v1beta/models/m:generateContent"
+
+
+def test_error_says_which_url(api):
+    start, holder = api
+
+    async def go():
+        base, a = await start()
+        c = LightClient(_conf(light_base_url=base + "/nope"))
+        with pytest.raises(LightError) as ei:
+            await c.chat("x")
+        assert "/nope/chat/completions" in str(ei.value)
+        await holder["runner"].cleanup()
+
+    run(go())
