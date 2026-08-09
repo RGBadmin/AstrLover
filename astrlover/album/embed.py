@@ -104,7 +104,7 @@ class AlbumEmbedder:
         n = await self.app.album.clear_embedded()
         # FAISS 里旧向量作废：直接重建库文件最干净
         await self.app.vectors.rebuild_album()
-        return f"已清空 {n} 张的向量标记并重建向量库，跑 /gallery embed auto 重转。"
+        return f"已清空 {n} 张的向量标记并重建向量库，跑 `/gallery embed auto` 重转。"
 
     # ------------------------------------------------------------------
     async def _run(self, count: int | None, progress_cb) -> str:

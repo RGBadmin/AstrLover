@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import re
 
 from astrbot.api import logger
 
@@ -12,6 +13,8 @@ from .console import MENU, DirectorConsole
 
 _TG_LIMIT = 4000
 _ACK_AFTER = 3      # 超过这么多秒还没跑完，就补一条「执行中」
+# 成对且不跨行——落单的星号是正文自带的，不该吃掉
+_BOLD = re.compile(r"\*\*([^*\n]+)\*\*")
 
 
 class DirectorBot:
@@ -118,11 +121,12 @@ class DirectorBot:
 
     @staticmethod
     def _html(text: str) -> str:
-        """把 `xxx` 转成 <code>xxx</code>，其余 HTML 转义。
+        """`xxx` → <code>，**xxx** → <b>，其余 HTML 转义。
 
-        不走 Markdown：那边正文里任何落单的 * _ [ 都会让整条消息 400，
-        而控制台的回执里全是 UMO、路径、文件名，防不胜防。
+        不走 Telegram 的 Markdown 模式：那边正文里任何落单的 * _ [ 都会让
+        整条消息 400，而控制台回执里全是 UMO、路径、文件名，防不胜防。
         HTML 只要转义三个字符，可控得多。
+        代码段里的 ** 不当加粗——命令行参数里带星号是常事。
         反引号落单时（数量为奇数）最后一段按普通文本处理，不吞内容。
         """
         parts = (text or "").split("`")
@@ -130,8 +134,10 @@ class DirectorBot:
         out = []
         for i, seg in enumerate(parts):
             esc = seg.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            out.append(f"<code>{esc}</code>" if i % 2 == 1 and (closed or i < len(parts) - 1)
-                       else esc)
+            if i % 2 == 1 and (closed or i < len(parts) - 1):
+                out.append(f"<code>{esc}</code>")
+            else:
+                out.append(_BOLD.sub(r"<b>\1</b>", esc))
         # split 把分隔符吃掉了。反引号落单时它不该消失——那多半是正文自带的字符
         if not closed and len(out) >= 2:
             out[-1] = "`" + out[-1]

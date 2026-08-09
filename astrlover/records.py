@@ -68,7 +68,8 @@ class Records:
         lines.append("状态：" + "　".join(
             f"{label} {await self.get_state(key) or '—'}" for key, label in STATES.items()
         ))
-        lines.append("\n/rec <类型> 看条目 · /rec add <类型> <内容> · /rec edit <编号> <内容> · /rec del <编号>")
+        lines.append("\n`/rec <类型>` 看条目 · `/rec add <类型> <内容>` · "
+                     "`/rec edit <编号> <内容>` · `/rec del <编号>`")
         return "\n".join(lines)
 
     async def listing(self, kind: str, limit: int = 20) -> str:
@@ -137,7 +138,7 @@ class Records:
     async def _list_milestones(self, limit: int) -> str:
         rows = await self.app.db.fetchall("SELECT * FROM milestones ORDER BY date LIMIT ?", (limit,))
         if not rows:
-            return "（还没有纪念日。/rec add m 2026-04-20 认识的日子 since）"
+            return "（还没有纪念日。`/rec add m 2026-04-20` 认识的日子 since）"
         k = {"anniversary": "每年", "since": "算天数", "once": "一次性"}
         return "\n".join(
             f"m{r['id']}｜{r['date']}｜{r['title']}｜{k.get(r['kind'], r['kind'])}"
@@ -305,7 +306,7 @@ class Records:
             # /rec add m 2026-04-20 认识的日子 [since|anniversary|once]
             bits = text.split()
             if not bits or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", bits[0]):
-                return "用法：/rec add m 2026-04-20 认识的日子 [since|anniversary|once]"
+                return "用法：`/rec add m 2026-04-20` 认识的日子 [since|anniversary|once]"
             mkind = "anniversary"
             if len(bits) > 2 and bits[-1] in ("since", "anniversary", "once"):
                 mkind, bits = bits[-1], bits[:-1]
@@ -320,7 +321,7 @@ class Records:
                 date, text = m.group(1), m.group(2)
             m = re.match(r"^(\d{1,2}:\d{2})\s*[-~]\s*(\d{1,2}:\d{2})\s+(.+)$", text)
             if not m:
-                return "用法：/rec add s [2026-08-12] 14:00-16:00 和小雅逛街（不写日期就是今天）"
+                return "用法：`/rec add s [2026-08-12] 14:00-16:00` 和小雅逛街（不写日期就是今天）"
             sid = await self.app.dao.add_schedule_item(
                 date, m.group(1), m.group(2), m.group(3), source="user"
             )
@@ -343,7 +344,7 @@ class Records:
             "m": ("milestones", "title"),
         }.get(prefix)
         if table_col is None:
-            return "这类记录不支持改内容（排期用 /rec del 后重新 /plan；情绪会自己消散）。"
+            return "这类记录不支持改内容（排期用 `/rec del` 后重新 `/plan`；情绪会自己消散）。"
         table, col = table_col
         row = await self.app.db.fetchone(f"SELECT id FROM {table} WHERE id=?", (num,))
         if row is None:

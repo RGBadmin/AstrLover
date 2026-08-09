@@ -164,3 +164,41 @@ def test_embed_progress_answers_the_questions():
     assert "400/1000" in text and "还剩 600" in text
     assert "bge-m3" in text and "小时" in text
     assert "embed stop" in text
+
+
+def test_html_renders_bold():
+    h = DirectorBot._html
+    assert h("**指令一览**") == "<b>指令一览</b>"
+    assert h("**全库** 1200/2040") == "<b>全库</b> 1200/2040"
+
+
+def test_bold_does_not_eat_stray_stars():
+    """乘方、通配符里的星号是正文，不是标记。"""
+    h = DirectorBot._html
+    assert h("2 ** 3 = 8") == "2 ** 3 = 8"
+    assert h("a ** b") == "a ** b"
+    assert h("**跨行\n不算**") == "**跨行\n不算**"
+    # 代码段里的星号原样留着
+    assert h("`ls **/*.py`") == "<code>ls **/*.py</code>"
+
+
+def test_console_replies_actually_contain_markup():
+    """渲染是好的，但内容里没有可渲染的东西一样看不出效果。
+
+    参考插件的回执把每个指令引用都包了反引号；这里盯住不要退回裸文本。
+    """
+    import pathlib
+    import re
+
+    src = pathlib.Path(__file__).resolve().parent.parent / "astrlover" / "director" / "console.py"
+    text = src.read_text(encoding="utf-8")
+    assert text.count("`") >= 60, f"控制台回执里只有 {text.count('`')} 个反引号，基本没markup"
+
+    # MENU 里每条带指令示例的说明都要包起来（反引号里的不算）
+    from astrlover.director.console import MENU
+
+    def outside_code(s):
+        return "".join(s.split("`")[::2])
+
+    bare = [k for k, d in MENU if re.search(r"(?<![\w/])/[a-z]+", outside_code(d))]
+    assert not bare, f"这些菜单项的说明里还有裸指令：{bare}"

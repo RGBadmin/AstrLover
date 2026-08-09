@@ -400,7 +400,7 @@ class App:
             if rest and rest[0] == "reset":
                 if len(rest) > 1 and rest[1] == "go":
                     return await album.reset()
-                return "这会清空整个库（描述和向量一起没）。确定就发 /gallery scan reset go"
+                return "这会清空整个库（描述和向量一起没）。确定就发 `/gallery scan reset go`"
             res = await album.scanner.scan(
                 prune=bool(rest and rest[0] == "prune"),
                 use_snowflake=bool(self.conf.get("use_snowflake_time", True)),
@@ -417,11 +417,11 @@ class App:
                 return "已停止后台索引，进度不丢。"
             if sub in ("auto", ""):
                 if album.indexer.start_auto(progress_cb):
-                    return "后台索引已开始，跑完会报告。/gallery index stop 可以停。"
+                    return "后台索引已开始，跑完会报告。`/gallery index stop` 可以停。"
                 return "后台索引已经在跑了。"
             if sub.isdigit():
                 return await album.indexer.run_count(int(sub), progress_cb)
-            return "用法：/gallery index auto | 50 | stop"
+            return "用法：`/gallery index auto` | 50 | stop"
         if action == "embed":
             sub = rest[0] if rest else ""
             if sub == "stop":
@@ -437,10 +437,10 @@ class App:
                 return "向量转换已经在跑了。"
             if sub.isdigit():
                 return await album.embedder.run_count(int(sub), progress_cb)
-            return "用法：/gallery embed auto | 500 | test | redo | stop"
+            return "用法：`/gallery embed auto` | 500 | test | redo | stop"
         if action == "search":
             if not rest:
-                return "用法：/gallery search 黑丝 车里"
+                return "用法：`/gallery search` 黑丝 车里"
             rows, report = await album.search(keywords=" ".join(rest), top_k=8)
             head = report.text()
             if not rows:
@@ -465,13 +465,13 @@ class App:
         if action == "redo":
             if rest and rest[0].lstrip("gG").isdigit():
                 return await album.redo(int(rest[0].lstrip("gG")))
-            return "用法：/gallery redo g123"
+            return "用法：`/gallery redo g123`"
         if action.lstrip("gG").isdigit():
             row = await album.get(int(action.lstrip("gG")))
             if row is None:
                 return f"没有 {action} 这张。"
             return f"g{row['id']}｜{row['path']}\n{row['desc'][:400]}"
-        return ("用法：/gallery [scan|index|embed|search|show|polish|clean|retry|audit|redo]\n"
+        return ("用法：`/gallery [scan|index|embed|search|show|polish|clean|retry|audit|redo]`\n"
                 "详见 README。")
 
     async def vision_command(self, arg: str) -> str:
@@ -490,7 +490,7 @@ class App:
                 if rows:
                     path = self.photos.abs_path(rows[0])
             if path is None:
-                return head + "\n\n（没有可用来测试的图片，先 /gallery scan 或在聊天里发一张）"
+                return head + "\n\n（没有可用来测试的图片，先 `/gallery scan` 或在聊天里发一张）"
             try:
                 text, _ = await self.vision.describe_once(str(path))
                 return head + f"\n\n✅ 通了，返回 {len(text)} 字：\n{text[:300]}"
@@ -498,11 +498,11 @@ class App:
                 return head + f"\n\n❌ {type(e).__name__}: {e}"
         if sub in ("", "backfill"):
             return await self.photo_memory.backfill_details()
-        return "用法：/vision test | /vision backfill"
+        return "用法：`/vision test` | `/vision backfill`"
 
     async def status_report(self) -> str:
         lines = ["🌸 AstrLover 状态", ""]
-        lines.append(f"🔗 绑定会话：{self.state_target or '（未绑定，/umo 看、/link 绑）'}")
+        lines.append(f"🔗 绑定会话：{self.state_target or '（未绑定，`/umo` 看、`/link` 绑）'}")
         if self.ready:
             lines.append(self.clock.describe_now(await self.records.milestones()))
             cur = await self.life.current_activity()

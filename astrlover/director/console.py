@@ -13,24 +13,24 @@ from astrbot.api import logger
 
 MENU = [
     ("umo", "列出所有会话，挑一个绑"),
-    ("link", "绑定目标会话 · /link UMO"),
-    ("say", "让她原样说一句 · /say 内容"),
-    ("act", "给个方向，她自己组织语言 · /act 方向"),
-    ("photo", "发张照片 · /photo 方向，或 /photo g123 [附言]"),
-    ("moment", "让她发条动态 · /moment [内容]"),
-    ("avatar", "给她换个头像 · /avatar [分类]"),
-    ("signature", "改她的签名 · /signature [内容]"),
-    ("noreply", "让她先别回话 · /noreply [分钟]"),
+    ("link", "绑定目标会话 · `/link UMO`"),
+    ("say", "让她原样说一句 · `/say` 内容"),
+    ("act", "给个方向，她自己组织语言 · `/act` 方向"),
+    ("photo", "发张照片 · `/photo` 方向，或 `/photo g123` [附言]"),
+    ("moment", "让她发条动态 · `/moment` [内容]"),
+    ("avatar", "给她换个头像 · `/avatar` [分类]"),
+    ("signature", "改她的签名 · `/signature` [内容]"),
+    ("noreply", "让她先别回话 · `/noreply` [分钟]"),
     ("reply", "解除静默，她重新开口"),
-    ("proactive", "主动消息状态 · /proactive now 立即发"),
+    ("proactive", "主动消息状态 · `/proactive now` 立即发"),
     ("status", "她的生命状态：此刻/日程/心情/记忆"),
-    ("rec", "记录：看/加/改/删 · /rec f · /rec add m 03-21 生日"),
-    ("diary", "偷看日记 · /diary [日期]"),
+    ("rec", "记录：看/加/改/删 · `/rec f` · `/rec add m 03-21` 生日"),
+    ("diary", "偷看日记 · `/diary` [日期]"),
     ("events", "她最近做的事"),
-    ("plan", "定时编排 · /plan 20:00 /act 提醒他吃药"),
-    ("plans", "看排期 · /plans cancel <id>"),
+    ("plan", "定时编排 · `/plan 20:00 /act` 提醒他吃药"),
+    ("plans", "看排期 · `/plans cancel <id>`"),
     ("gallery", "相册 · scan / index auto / embed / search 词"),
-    ("vision", "视觉 API 诊断 · /vision test"),
+    ("vision", "视觉 API 诊断 · `/vision test`"),
     ("presence", "插件状态：动态、冷却、图片存档"),
     ("help", "所有指令一览"),
 ]
@@ -39,7 +39,7 @@ _PLAN_INTENT = (
     "把管理员的话解析成定时任务 JSON："
     '{"when": "+30m 或 HH:MM 或 YYYY-MM-DD HH:MM", "cmd": "/say 内容 或 /act 方向 '
     '或 /moment 主题 或 /photo 方向 或 /avatar 或 /signature"}。'
-    "「提醒他/跟他说」类用 /act；要求原话转达用 /say；发动态用 /moment。"
+    "「提醒他/跟他说」类用 `/act`；要求原话转达用 `/say`；发动态用 `/moment`。"
     "解析不出时间就把 when 设为空字符串。只输出 JSON。"
 )
 
@@ -95,7 +95,7 @@ class DirectorConsole:
         current = app.state_target
         lines = ["会话列表（复制一整行执行即可绑定）：", ""]
         for umo, _ in sorted(latest.items(), key=lambda kv: -kv[1])[:30]:
-            lines.append(f"/link {umo}" + ("   ← 当前绑定" if umo == current else ""))
+            lines.append(f"`/link {umo}`" + ("   ← 当前绑定" if umo == current else ""))
         return "\n".join(lines)
 
     async def cmd_link(self, arg: str = "", chat_id=None) -> str:
@@ -138,14 +138,14 @@ class DirectorConsole:
     # ============================================================ 让她说话
     async def cmd_say(self, arg: str = "", chat_id=None) -> str:
         if not arg:
-            return "用法：/say 内容（她原样说出这句）"
+            return "用法：`/say` 内容（她原样说出这句）"
         return await self.app.bridge.deliver(arg)
 
     async def cmd_act(self, arg: str = "", chat_id=None) -> str:
         if not arg:
-            return "用法：/act 方向（她带着人格和最近对话自己组织语言）"
+            return "用法：`/act` 方向（她带着人格和最近对话自己组织语言）"
         if re.search(r"(拍|照片|图|自拍)", arg):
-            hint = "\n（提示：/act 只会让她说话、不发图。要图用 /photo <方向>）"
+            hint = "\n（提示：`/act` 只会让她说话、不发图。要图用 `/photo <方向>`）"
         else:
             hint = ""
         try:
@@ -171,7 +171,7 @@ class DirectorConsole:
         if not photo_id:
             direction = arg or await self._improvise("photo")
             if not direction:
-                return "她没想出要发什么。直接给编号也行：/photo g123 [附言]"
+                return "她没想出要发什么。直接给编号也行：`/photo g123` [附言]"
             rows, _ = await app.album.search(keywords=direction, want=direction, top_k=1)
             if not rows:
                 return f"她想找「{direction[:30]}」，但相册里没有对得上的。"
@@ -184,7 +184,7 @@ class DirectorConsole:
         client = app.bridge.platform_client(app.state_target)
         text = arg or await self._improvise("moment")
         if not text:
-            return "她没想出要发什么。直接给内容也行：/moment 正文"
+            return "她没想出要发什么。直接给内容也行：`/moment` 正文"
         head = "" if arg else f"她想发：\n{text}\n\n"
         return head + await app.moments.post(client, text, enforce_limits=False)
 
@@ -198,7 +198,7 @@ class DirectorConsole:
         client = app.bridge.platform_client(app.state_target)
         text = arg or await self._improvise("signature")
         if not text:
-            return "她没想出要写什么。直接给内容也行：/signature 一句话"
+            return "她没想出要写什么。直接给内容也行：`/signature` 一句话"
         return await app.face.update_signature(client, text, enforce_limits=False)
 
     async def _improvise(self, key: str) -> str:
@@ -215,7 +215,7 @@ class DirectorConsole:
         await self.app.dao.kv_set("silent_until", until)
         if minutes:
             return f"好，她先不回话了（{minutes} 分钟后自动恢复）。你说的仍然进她的记忆。"
-        return "好，她先不回话了（发 /reply 恢复）。你说的仍然进她的记忆。"
+        return "好，她先不回话了（发 `/reply` 恢复）。你说的仍然进她的记忆。"
 
     async def cmd_reply(self, arg: str = "", chat_id=None) -> str:
         await self.app.dao.kv_set("silent_until", 0)
@@ -263,9 +263,9 @@ class DirectorConsole:
     async def cmd_plan(self, arg: str = "", chat_id=None) -> str:
         app = self.app
         if not arg:
-            return ("用法：/plan <时间> <指令或想让她做的事>\n"
-                    "时间：+30m / +2h / 20:00 / 2026-08-07 09:00，也可用自然语言\n"
-                    "例：/plan 20:00 /act 提醒他吃药")
+            return ("用法：`/plan <时间> <指令或想让她做的事>`\n"
+                    "时间：`+30m` / `+2h` / `20:00` / `2026-08-07 09:00`，也可用自然语言\n"
+                    "例：`/plan 20:00 /act` 提醒他吃药")
         head, _, rest = arg.partition(" ")
         due_ts, cmd = None, ""
         if rest and re.fullmatch(r"\+\d+(?:\.\d+)?[mh]|\d{1,2}:\d{2}", head):
@@ -277,14 +277,14 @@ class DirectorConsole:
                 due_ts = self._parse_when(str(intent.get("when") or ""))
                 cmd = str(intent["cmd"]).strip()
         if not cmd:
-            return "没解析出要做的事，试试「/plan 20:00 /act 提醒他……」。"
+            return "没解析出要做的事，试试「`/plan 20:00 /act` 提醒他……」。"
         if due_ts is None:
             return "没解析出时间。支持 +30m / +2h / 20:00 / 2026-08-07 09:00。"
         aid = await app.dao.add_action(
             "console_cmd", {"cmd": cmd, "chat_id": chat_id}, due_ts=due_ts, source="director"
         )
         return (f"⏰ 已排期 #{aid}：{datetime.fromtimestamp(due_ts).strftime('%m-%d %H:%M')} "
-                f"执行 {cmd}\n/plans 查看，/plans cancel {aid} 取消。")
+                f"执行 `{cmd}`\n`/plans` 查看，`/plans cancel {aid}` 取消。")
 
     async def cmd_plans(self, arg: str = "", chat_id=None) -> str:
         app = self.app
@@ -339,7 +339,7 @@ class DirectorConsole:
         lines.append(f"图片存档：{st['total']} 张（目录层 {st['catalog']} · 细节层 {st['detail']}）")
         silent = await app.dao.kv_get("silent_until", 0) or 0
         if silent == -1:
-            lines.append("⏸ 静默中（/reply 解除）")
+            lines.append("⏸ 静默中（`/reply` 解除）")
         elif silent > time.time():
             lines.append(f"⏸ 静默中，{int((silent - time.time()) // 60) + 1} 分钟后恢复")
         return "\n".join(lines)
@@ -384,7 +384,7 @@ class DirectorConsole:
         return await app.records.listing(head, 30)
 
     async def cmd_help(self, arg: str = "", chat_id=None) -> str:
-        return "指令一览：\n" + "\n".join(f"/{k} — {d}" for k, d in MENU)
+        return "**指令一览**\n\n" + "\n".join(f"`/{k}` — {d}" for k, d in MENU)
 
     def _progress(self, chat_id):
         async def cb(text: str):
