@@ -111,11 +111,6 @@ class AlbumEmbedder:
         app = self.app
         if not await app.vectors.ensure():
             return f"向量模型用不了：{app.vectors.last_error or '没配（面板「向量模型」组）'}"
-        if app.vectors.album_wiped:
-            # 向量库被清了（换模型或换分段），DB 里的 embedded 标记全是假的
-            n = await app.album.clear_embedded()
-            app.vectors.album_wiped = False
-            logger.info(f"[AstrLover] 相册向量已作废，{n} 张重新排队转换。")
         done = 0
         started = last_report = time.time()
         batch = max(4, min(64, int(app.conf.get("embed_batch", 32) or 32)))

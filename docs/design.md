@@ -151,7 +151,7 @@ Embedding Provider——报错落在插件自己的日志和面板上，能直�
 `cheatsheet`（版本化小抄）· `pending_actions`（排期）· `kvmisc`（游标/计数/设置/状态）
 
 向量：FAISS 双库——`memory`（事实/日记，带 ts 做时间衰减）与
-`album`（每图三段 env/body/act，meta={img, seg}；分段方式变了自动重建）。
+`album`（每图三段 env/body/act，meta={img, seg}）。
 
 ## 五、测试
 

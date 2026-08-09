@@ -5,13 +5,6 @@
 而不是拿测试里自己编的格式。
 """
 
-import asyncio
-import json
-import sys
-import types
-
-import pytest
-
 from astrlover.album.embed import SEGMENTS, split_layers
 
 # 视觉提示词实际产出的样子：标签行 + 「第N层：标题」
@@ -55,10 +48,6 @@ BARE = """诱惑---无水印---无遮挡---酒店
 
 体液痕迹
 无。"""
-
-
-def run(coro):
-    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------- 切分
@@ -112,90 +101,3 @@ def test_partial_layers_still_keep_everything():
 
 def test_empty_description():
     assert split_layers("") == {}
-
-
-# ---------------------------------------------------------------- 自动重建
-class _FakeFaiss:
-    def __init__(self, docs, index, provider):
-        pass
-
-    async def initialize(self):
-        pass
-
-    async def close(self):
-        pass
-
-
-@pytest.fixture(autouse=True)
-def stub_faiss(monkeypatch):
-    mod = types.ModuleType("astrbot.core.db.vec_db.faiss_impl.vec_db")
-    mod.FaissVecDB = _FakeFaiss
-    for name in ("astrbot.core", "astrbot.core.db", "astrbot.core.db.vec_db",
-                 "astrbot.core.db.vec_db.faiss_impl"):
-        sys.modules.setdefault(name, types.ModuleType(name))
-    monkeypatch.setitem(sys.modules, "astrbot.core.db.vec_db.faiss_impl.vec_db", mod)
-
-
-class _StubClient:
-    def __init__(self):
-        self._dim = 0
-
-    @property
-    def configured(self):
-        return True
-
-    async def resolve_dim(self):
-        self._dim = 8
-        return 8
-
-    def get_dim(self):
-        return self._dim
-
-    def signature(self):
-        return "openai|host|m|8"
-
-
-def _vectors(tmp_path):
-    from astrlover.store.vectors import Vectors
-
-    v = Vectors(tmp_path, conf=None)
-    v.client = _StubClient()
-    return v
-
-
-def test_segmentation_change_rebuilds_album_only(tmp_path):
-    """分段方式改了：相册作废，记忆库不动——记忆本来就不分段。"""
-    v = _vectors(tmp_path)
-    assert run(v.ensure())
-    for name in ("memory_docs.db", "memory.index", "album_docs.db", "album.index"):
-        (tmp_path / name).write_bytes(b"old")
-
-    # 伪造一份"上一版是四段"的标识
-    meta = json.loads((tmp_path / "embed_meta.json").read_text("utf-8"))
-    meta["segments"] = ["full", "env", "body", "act"]
-    (tmp_path / "embed_meta.json").write_text(json.dumps(meta), encoding="utf-8")
-
-    v2 = _vectors(tmp_path)
-    assert run(v2.ensure())
-    assert v2.album_wiped, "没标记出相册要重转"
-    assert not (tmp_path / "album_docs.db").exists()
-    assert not (tmp_path / "album.index").exists()
-    assert (tmp_path / "memory_docs.db").read_bytes() == b"old", "记忆库被误伤"
-
-
-def test_same_segmentation_keeps_album(tmp_path):
-    v = _vectors(tmp_path)
-    assert run(v.ensure())
-    (tmp_path / "album.index").write_bytes(b"old")
-
-    v2 = _vectors(tmp_path)
-    assert run(v2.ensure())
-    assert not v2.album_wiped
-    assert (tmp_path / "album.index").read_bytes() == b"old"
-
-
-def test_meta_records_current_segments(tmp_path):
-    v = _vectors(tmp_path)
-    run(v.ensure())
-    meta = json.loads((tmp_path / "embed_meta.json").read_text("utf-8"))
-    assert meta["segments"] == list(SEGMENTS)
