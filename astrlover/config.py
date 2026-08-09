@@ -76,5 +76,6 @@ class Cfg:
             return {"base_url": c.get("ig_comfy_base_url", ""), "api_key": c.get("ig_comfy_api_key", ""),
                     "workflow_file": c.get("ig_comfy_workflow", "comfyui_workflow.json")}
         if name == "novelai":
-            return {"api_key": c.get("ig_nai_api_key", ""), "model": c.get("ig_nai_model", "")}
+            return {"api_key": c.get("ig_nai_api_key", ""), "model": c.get("ig_nai_model", ""),
+                    "steps": c.get("ig_nai_steps", 24)}
         return {}

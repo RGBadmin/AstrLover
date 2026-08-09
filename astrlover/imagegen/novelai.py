@@ -22,14 +22,21 @@ class NovelAIBackend(ImageBackend):
     def configured(self) -> bool:
         return bool(self.conf.get("api_key"))
 
+    def _steps(self) -> int:
+        """步数越多越细也越慢越贵；NovelAI 超过 28 收益已经很小。"""
+        try:
+            return max(1, min(50, int(self.conf.get("steps", 24) or 24)))
+        except (TypeError, ValueError):
+            return 24
+
     async def generate(self, spec: PromptSpec) -> bytes:
         model = str(self.conf.get("model") or "nai-diffusion-4-5-full")
         seed = random.randint(0, 2**32 - 1)
         params: dict = {
             "negative_prompt": spec.negative,
-            "width": 832,
-            "height": 1216,
-            "steps": 24,
+            "width": spec.width,
+            "height": spec.height,
+            "steps": self._steps(),
             "scale": 5.5,
             "sampler": "k_euler_ancestral",
             "seed": seed,

@@ -37,7 +37,9 @@ class NanoBananaBackend(ImageBackend):
                     "data": base64.b64encode(p.read_bytes()).decode(),
                 }
             })
-        prompt = spec.positive
+        # 这个接口没有宽高参数，只能把画幅写进提示词——不保证严格遵守，
+        # 但比什么都不说强
+        prompt = f"{spec.positive}\n\n画幅：{spec.width}x{spec.height}"
         if spec.reference_images:
             prompt = "以附带图片中的人物为同一人（保持长相一致），生成新照片。" + prompt
         prompt += f"。避免：{spec.negative}"

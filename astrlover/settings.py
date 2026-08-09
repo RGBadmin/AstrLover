@@ -10,6 +10,7 @@ AstrBot 的插件配置页只留「接线」——恋人 id、控制台 token �
 from dataclasses import dataclass, field
 
 from .album.prompts import SEARCH_PROMPT
+from .imagegen.prompts import IMAGE_PROMPT
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,7 @@ SPEC: tuple[S, ...] = (
     S(key='life_timezone', group='生命模拟', label='她所在时区', type='string', default='Asia/Shanghai'),
     S(key='life_heartbeat_minutes', group='生命模拟', label='心跳间隔（分钟）', type='int', default=5, hint='推进生活与记忆维护，纯代码不耗 token。'),
     # ---- 生图 ----
+    S(key='ig_prompt', group='生图', label='生图提示词模板', type='text', default=IMAGE_PROMPT, hint='先判断拍什么/画幅/她入不入镜，再按摄影语言写总视图+九宫格。输出格式由代码追加。'),
     S(key='ig_backend_order', group='生图', label='后端优先顺序', type='list', default=['nanobanana', 'comfyui', 'novelai'], hint='按序降级：前一个失败自动试下一个。'),
     S(key='ig_nb_api_key', group='生图', label='NanoBanana API Key', type='string', default='', hint='支持参考图，人物一致性最好，建议首选。'),
     S(key='ig_nb_base_url', group='生图', label='NanoBanana 地址', type='string', default='https://generativelanguage.googleapis.com'),
@@ -102,6 +104,7 @@ SPEC: tuple[S, ...] = (
     S(key='ig_comfy_workflow', group='生图', label='ComfyUI workflow 文件', type='string', default='comfyui_workflow.json', hint='API 格式 JSON，放数据目录；用 {POSITIVE}/{NEGATIVE}/{SEED} 占位。'),
     S(key='ig_nai_api_key', group='生图', label='NovelAI API Key', type='string', default='', hint='只吃提示词，容易漂移，建议放降级链末位。'),
     S(key='ig_nai_model', group='生图', label='NovelAI 模型', type='string', default='nai-diffusion-4-5-full'),
+    S(key='ig_nai_steps', group='生图', label='NovelAI 生成步数', type='int', default=24, hint='越多越细也越慢越贵，28 以上收益很小。范围 1~50。'),
 )
 
 DEFAULTS = {s.key: s.default for s in SPEC}

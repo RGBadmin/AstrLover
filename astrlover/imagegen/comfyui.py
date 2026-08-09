@@ -1,7 +1,7 @@
 """云 ComfyUI 后端：workflow API 模板方式。
 
 用户提供导出的 workflow（API 格式 JSON）放在插件数据目录，
-其中以 "{POSITIVE}" / "{NEGATIVE}" / "{SEED}" 占位；
+其中以 "{POSITIVE}" / "{NEGATIVE}" / "{SEED}" / "{WIDTH}" / "{HEIGHT}" 占位；
 人物一致性建议在 workflow 内部用 LoRA / IPAdapter / InstantID 保证。
 """
 
@@ -35,6 +35,10 @@ class ComfyUIBackend(ImageBackend):
         raw = wf_path.read_text(encoding="utf-8")
         raw = raw.replace("{POSITIVE}", json.dumps(spec.positive, ensure_ascii=False)[1:-1])
         raw = raw.replace("{NEGATIVE}", json.dumps(spec.negative, ensure_ascii=False)[1:-1])
+        raw = raw.replace('"{WIDTH}"', str(spec.width))
+        raw = raw.replace('"{HEIGHT}"', str(spec.height))
+        raw = raw.replace("{WIDTH}", str(spec.width))
+        raw = raw.replace("{HEIGHT}", str(spec.height))
         raw = raw.replace('"{SEED}"', str(random.randint(0, 2**31 - 1)))
         raw = raw.replace("{SEED}", str(random.randint(0, 2**31 - 1)))
         return json.loads(raw)

@@ -76,7 +76,7 @@ class ImageGen:
             str(p) for p in sorted(anchors_dir.glob("*"))
             if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
         ][:2] if anchors_dir.exists() else []
-        spec = build_spec(await app.appearance_text(), situation, anchor_paths)
+        spec = await build_spec(app, situation, anchor_paths)
 
         # 优先落到 presence 相册目录，回流后可被她自己检索到
         album_dir = str(app.conf.get("gallery_dir") or "").strip()

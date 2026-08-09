@@ -33,7 +33,7 @@
 main.py                  仅 @filter 注册与薄委托（钩子/12 个工具/静默拦截）
 astrlover/
 ├── app.py               装配中心 + 管线钩子实现 + 控制台委托（gallery/vision/status）
-├── settings.py          设置 SPEC（69 项）+ Settings：接线取配置页，其余取库
+├── settings.py          设置 SPEC（71 项）+ Settings：接线取配置页，其余取库
 ├── config.py            生命层配置视图（读同一个 Settings）
 ├── tools.py             LLM 工具实现体
 ├── actions.py           排期执行 = 控制台指令重放
@@ -52,7 +52,8 @@ astrlover/
 ├── memory/              pipeline（事实/小抄/日记/周记/召回）· transcript（读 AstrBot 对话历史）
 ├── persona/prompt.py    注入块组装（人设不在这里）
 ├── records.py           统一记录门面：增删改 + 生命周期清理
-├── imagegen/            三后端 + 提示词构建（锚点图保一致性）
+├── imagegen/            三后端 + prompts（摄影语言模板）
+│                        prompt_builder（先规划拍什么/画幅/入不入镜，再写稿）
 ├── voice/               TTS → ogg 语音条
 ├── panel/ + pages/panel Web 面板（Plugin Pages + register_web_api）
 ├── markers.py           从她的回复里剥内部标记（improv / told / found）
@@ -115,7 +116,7 @@ callback_data 有 64 字节硬上限，超了走内存令牌表（重载后过�
 
 **D10 配置两处、各管各的**：AstrBot 插件配置页只留 5 项接线
 （恋人 id、控制台 token/管理员、TTS Provider id、生命层开关）——那几项
-决定"插件怎么找到你和你的服务"，装机设一次。其余 69 项在 settings.py
+决定"插件怎么找到你和你的服务"，装机设一次。其余 71 项在 settings.py
 声明、存数据库、由面板设置页编辑：它们都是**看着结果反复调**的东西
 （重试次数、冷却、top_k、提示词），本来就该在能看到结果的地方调，
 所以设置页旁边直接放了视觉/向量的「测一下」按钮。
@@ -130,6 +131,15 @@ Settings.get() 保持同步（启动时把覆盖值读进内存），调用点�
 **D12 记录 UI 是逐条的**：面板返回结构化行（rid / chips / body / meta /
 editable / deletable），每条渲染成一张可就地编辑与删除的卡片，而不是
 一大块只读文本。状态与小抄也是行，只是不可删。
+
+**D16 生图先规划再写稿**：不把情境原样丢给模型。轻量模型看着情境 +
+最近对话先定三件事——拍什么（意向落成看得见的东西）、画幅（NovelAI 的
+832x1216 / 1216x832 / 1024x1024 三选一）、她入不入镜——再写成
+「总视图 + 九宫格」的摄影语言拍摄稿。九宫格逼模型把每格填满，
+信息量远大于一句概括。
+不入镜时**不带外观也不带锚点图**：以前提示词硬拼了「人物：…；…同一位女生」，
+写「赤道无风带」出来的也是个女孩。规划失败或没给出画面内容时退回直白拼接
+（只判 positive 非空是查不出来的——那时它只剩「人物：…」，情境整个丢了）。
 
 **D13 生命层可整个关掉**：`life_enabled=false` 时 `App.ready=False`，
 presence 能力照常工作；生图在没有外观记录时退化为纯情境描述。
@@ -160,6 +170,6 @@ Embedding Provider——报错落在插件自己的日志和面板上，能直�
 
 ## 五、测试
 
-`python -m pytest tests` —— 137 项，不需要安装 AstrBot：
+`python -m pytest tests` —— 185 项，不需要安装 AstrBot：
 `conftest.py` 提供 astrbot 桩模块，`test_smoke_app.py` 用假 Context 真正启动
 App 跑通装配、钩子注入、相册扫描检索、图片折叠、控制台命令与全部降级路径。
