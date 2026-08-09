@@ -37,8 +37,12 @@ _JSON_CONTRACT = (
     '"overview": "总视图，一到两句摄影语言", '
     '"grid": {"左上": "...", "上中": "...", "右上": "...", '
     '"左中": "...", "正中": "...", "右中": "...", '
-    '"左下": "...", "下中": "...", "右下": "..."}}'
+    '"左下": "...", "下中": "...", "右下": "..."}, '
+    '"tags": "英文 danbooru 标签，逗号分隔"}'
 )
+
+# NovelAI 没有质量标签时会往草图/线稿漂——两张废图都是这个样子
+_NAI_QUALITY = "best quality, amazing quality, very aesthetic, absurdres"
 
 _GRID_ORDER = ("左上", "上中", "右上", "左中", "正中", "右中", "左下", "下中", "右下")
 
@@ -53,6 +57,28 @@ class PromptSpec:
     situation: str = ""       # 原始情境，回流入库时作为打标素材
     orientation: str = DEFAULT_ORIENTATION
     with_her: bool = True
+    tags: str = ""            # 英文 danbooru 标签，只认标签的后端（NovelAI）用
+
+
+def _clean_tags(raw: str, with_her: bool) -> str:
+    """整理模型给的标签串：去空、去重、补主体、补质量标签。
+
+    主体标签必须有——漏了 `no humans` 的话 NovelAI 一定给你画个人；
+    质量标签也必须有，没有它会往草图/线稿漂。
+    """
+    seen: list[str] = []
+    for t in raw.replace("，", ",").split(","):
+        t = " ".join(t.split()).lower()
+        if t and t not in seen:
+            seen.append(t)
+    subject = "1girl, solo" if with_her else "no humans"
+    for t in reversed(subject.split(", ")):
+        if t not in seen:
+            seen.insert(0, t)
+    for q in _NAI_QUALITY.split(", "):
+        if q not in seen:
+            seen.append(q)
+    return ", ".join(seen)
 
 
 def _compose(overview: str, grid: dict, appearance: str, with_her: bool) -> str:
@@ -88,6 +114,8 @@ def fallback_spec(appearance: str, situation: str, anchors: list[str]) -> Prompt
         situation=situation,
         orientation=DEFAULT_ORIENTATION,
         with_her=bool(appearance),
+        # 兜底时没法翻标签，至少把质量标签给上，免得 NAI 漂成线稿
+        tags=("1girl, solo, " if appearance else "") + _NAI_QUALITY,
     )
 
 
@@ -130,9 +158,11 @@ async def build_spec(app, situation: str, anchors: list[str]) -> PromptSpec:
     appearance = (await app.appearance_text()).strip() if with_her else ""
     positive = _compose(overview, grid, appearance, with_her)
 
+    tags = _clean_tags(str(plan.get("tags") or ""), with_her)
     w, h = SIZES[orientation]
     logger.info(f"[AstrLover] 生图规划：{orientation} {w}x{h}，"
                 f"{'她入镜' if with_her else '不入镜'}｜{situation[:40]}")
+    logger.debug(f"[AstrLover] 标签：{tags}")
     return PromptSpec(
         positive=positive,
         negative=_NEGATIVE + (", " + _NEGATIVE_PERSON if with_her else ""),
@@ -141,4 +171,5 @@ async def build_spec(app, situation: str, anchors: list[str]) -> PromptSpec:
         situation=situation,
         orientation=orientation,
         with_her=with_her,
+        tags=tags,
     )

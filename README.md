@@ -418,6 +418,20 @@ API 调用 1580 次，其中 320 次被内容策略拦掉（生成中 260 / 输�
 
 九宫格逼着模型把每一格都填满，比一句「一片死寂的海」信息量大得多。这份模板在面板「生图」组可改。
 
+### 还会同时给一串英文标签
+
+**NovelAI 只认 danbooru 英文标签**，中文句子对它是噪声——读不懂就退回它自己的先验，画出一个站着的动漫女孩、纯白背景、还带线稿感。所以规划时会把同一个画面另写一份标签串：
+
+```
+1girl, solo, lying, on stomach, on bed, indoors, bedroom, pajamas, loose clothes,
+long hair, hair down, wet hair, chin rest, magazine, open book, pillow, blanket,
+barefoot, lamp, warm lighting, night, depth of field, best quality, absurdres
+```
+
+两个细节是硬保证的，不靠模型自觉：**主体标签**（入镜 `1girl, solo` / 不入镜 `no humans`）和**质量标签**都由代码补齐——漏了前者它一定给你画个人，漏了后者它会往草图漂。负面词也换成 NAI 自己那套 UC（中文负面词它同样读不懂）。
+
+中文摄影稿仍然保留，给 NanoBanana 那类吃自然语言的后端用。
+
 ### 后端
 
 三个按序降级：**NanoBanana**（Gemini 系，支持参考图，人物一致性最好）→ **云 ComfyUI**（导出 API 格式的 workflow JSON 放进插件数据目录，用 `{POSITIVE}` `{NEGATIVE}` `{SEED}` `{WIDTH}` `{HEIGHT}` 占位；人物一致性建议在 workflow 里用 LoRA/IPAdapter）→ **NovelAI**（`832×1216` 三规格原生支持，步数在面板里调，默认 24——28 以上收益很小）。

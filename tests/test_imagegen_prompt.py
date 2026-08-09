@@ -201,3 +201,112 @@ def test_fallback_without_appearance_has_no_person_negatives():
     assert "人物：" not in spec.positive
     assert "different person" not in spec.negative
     assert not spec.with_her
+
+
+# ---------------------------------------------------------------- 英文标签
+def test_tags_are_cleaned_and_deduped(gen_app):
+    async def go():
+        app = await gen_app({**_SCENE, "tags": "Ocean,  ocean , HORIZON,,sky"})
+        spec = await build_spec(app, "海", [])
+        tags = spec.tags.split(", ")
+        assert tags.count("ocean") == 1, "重复标签没去掉"
+        assert "horizon" in tags, "没转小写"
+        assert "" not in tags
+        await app.terminate()
+
+    run(go())
+
+
+def test_subject_tag_is_forced(gen_app):
+    """漏了 no humans，NovelAI 一定给你画个人——这是两张废图的直接原因。"""
+
+    async def go():
+        app = await gen_app({**_SCENE, "tags": "ocean, sky"})
+        spec = await build_spec(app, "海", [])
+        assert spec.tags.startswith("no humans")
+
+        app2 = await gen_app({**_SELFIE, "tags": "bedroom, pajamas"})
+        spec2 = await build_spec(app2, "趴在床上", [])
+        assert spec2.tags.startswith("1girl, solo")
+        await app.terminate()
+        await app2.terminate()
+
+    run(go())
+
+
+def test_quality_tags_are_appended(gen_app):
+    """没有质量标签时 NAI 会往草图/线稿漂。"""
+
+    async def go():
+        app = await gen_app({**_SCENE, "tags": "ocean"})
+        spec = await build_spec(app, "海", [])
+        for q in ("best quality", "very aesthetic", "absurdres"):
+            assert q in spec.tags
+        await app.terminate()
+
+    run(go())
+
+
+def test_fallback_still_carries_quality_tags():
+    assert "best quality" in fallback_spec("黑长直", "阳台", []).tags
+    assert fallback_spec("黑长直", "阳台", []).tags.startswith("1girl, solo")
+
+
+def test_novelai_payload_uses_tags_and_uc():
+    """把请求体真拼一遍：正文是标签、负面是 UC、宽高是画幅、步数是配置值。"""
+    import asyncio as _a
+
+    from astrlover.imagegen import novelai as nai
+
+    spec = PromptSpec(
+        positive="中文摄影稿", negative="中文负面",
+        tags="no humans, ocean, sky, best quality",
+        width=1216, height=832,
+    )
+    seen = {}
+
+    class _Resp:
+        status = 200
+
+        async def read(self):
+            import io
+            import zipfile
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr("a.png", b"PNG")
+            return buf.getvalue()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class _Sess:
+        def post(self, url, json=None, headers=None):
+            seen["payload"] = json
+            return _Resp()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    nai.aiohttp = type("M", (), {
+        "ClientSession": staticmethod(lambda **_k: _Sess()),
+        "ClientTimeout": staticmethod(lambda **_k: None),
+    })()
+
+    b = nai.NovelAIBackend({"api_key": "k", "model": "nai-diffusion-4-5-full", "steps": 30})
+    data = _a.run(b.generate(spec))
+    assert data == b"PNG"
+
+    p = seen["payload"]["parameters"]
+    assert seen["payload"]["input"] == spec.tags, "正文该是标签"
+    assert "中文" not in seen["payload"]["input"]
+    assert "sketch" in p["negative_prompt"] and "lineart" in p["negative_prompt"]
+    assert (p["width"], p["height"]) == (1216, 832)
+    assert p["steps"] == 30
+    assert p["qualityToggle"] is True
+    assert p["v4_prompt"]["caption"]["base_caption"] == spec.tags

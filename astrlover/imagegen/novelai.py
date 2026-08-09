@@ -15,6 +15,15 @@ from .prompt_builder import PromptSpec
 
 _API = "https://image.novelai.net/ai/generate-image"
 
+# NAI 官方 UC（undesired content）那一档的常用集合。中文负面词它同样读不懂，
+# 用标签模式时就该换成这套。
+_UC = (
+    "lowres, worst quality, bad quality, jpeg artifacts, watermark, signature, "
+    "text, logo, bad anatomy, bad hands, extra digits, fewer digits, "
+    "missing fingers, artistic error, scan artifacts, sketch, lineart, "
+    "monochrome, greyscale, unfinished"
+)
+
 
 class NovelAIBackend(ImageBackend):
     name = "novelai"
@@ -32,8 +41,12 @@ class NovelAIBackend(ImageBackend):
     async def generate(self, spec: PromptSpec) -> bytes:
         model = str(self.conf.get("model") or "nai-diffusion-4-5-full")
         seed = random.randint(0, 2**32 - 1)
+        # 这个模型只认 danbooru 英文标签。喂中文摄影稿等于喂噪声——
+        # 它读不懂就退回自己的先验：一个站着的动漫女孩、纯白背景、线稿感。
+        positive = spec.tags.strip() or spec.positive
+        negative = _UC if spec.tags.strip() else spec.negative
         params: dict = {
-            "negative_prompt": spec.negative,
+            "negative_prompt": negative,
             "width": spec.width,
             "height": spec.height,
             "steps": self._steps(),
@@ -41,18 +54,20 @@ class NovelAIBackend(ImageBackend):
             "sampler": "k_euler_ancestral",
             "seed": seed,
             "n_samples": 1,
+            "qualityToggle": True,
+            "ucPreset": 0,
         }
         if model.startswith("nai-diffusion-4"):
             params["v4_prompt"] = {
-                "caption": {"base_caption": spec.positive, "char_captions": []},
+                "caption": {"base_caption": positive, "char_captions": []},
                 "use_coords": False,
                 "use_order": True,
             }
             params["v4_negative_prompt"] = {
-                "caption": {"base_caption": spec.negative, "char_captions": []},
+                "caption": {"base_caption": negative, "char_captions": []},
             }
         payload = {
-            "input": spec.positive,
+            "input": positive,
             "model": model,
             "action": "generate",
             "parameters": params,

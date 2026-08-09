@@ -45,6 +45,34 @@ IMAGE_PROMPT = """<构图>
 一句原则：写看得见的东西。情绪、寓意、象征都要落成具体的光、形状、颜色。
 
 
+【还要给一串英文标签】
+
+有的生图模型（NovelAI 这类）只认 **danbooru 英文标签**，中文句子对它是噪声——
+读不懂就退回它自己的先验，画出一个站着的动漫女孩、纯白背景。
+所以上面那份摄影稿之外，再把同一个画面写成一串英文标签。
+
+写法：全小写，逗号分隔，从大到小——
+  人数与主体（1girl, solo / no humans）
+  场景（indoors, bedroom, on bed / ocean, horizon, sky）
+  姿势与视角（lying, on stomach, chin rest, from above / wide shot）
+  衣着（pajamas, loose clothes, off shoulder）
+  身体与发型（long hair, hair down, wet hair, barefoot）
+  道具（magazine, open book, pillow, blanket）
+  光线与氛围（soft lighting, night, warm light, depth of field）
+
+不入镜的画面开头写 `no humans`，别漏——漏了它一定给你画个人。
+不要写中文，不要写句子，不要编不存在的标签。
+
+例：
+  刚洗完澡趴在床上看杂志
+    1girl, solo, lying, on stomach, on bed, indoors, bedroom, pajamas,
+    loose clothes, long hair, hair down, wet hair, chin rest, magazine,
+    open book, pillow, blanket, barefoot, soft lighting, night, from above
+  代表赤道无风带的图
+    no humans, ocean, horizon, sky, cloud, cumulonimbus cloud, sunlight,
+    reflection, sailboat, calm water, wide shot, scenery, day
+
+
 【例】
 
 情境：代表赤道无风带的图
