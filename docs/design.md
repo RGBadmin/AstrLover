@@ -45,7 +45,8 @@ astrlover/
 ├── photos/              archive（sha 去重 + 编号 + 两层描述）· memory（三段钩子逻辑）
 │                        sender（g123/#3 解析与发送记账）
 ├── presence/            moments（发布/时间线注入）· profile（头像/签名/表情）· limits（频控）
-├── director/            bot（PTB 传输层）· console（命令）· bridge（说话/写历史/按人格生成）
+├── director/            bot（PTB 传输层）· console（命令）· keyboard（可点回执）
+│                        bridge（说话/写历史/按人格生成）
 ├── heart/               heartbeat（心跳）· proactive（意愿式主动）· impulses（生活冲动）
 ├── life/                clock（时间感知）· engine（作息按天问 + 约定跨天存）· mood（情绪半衰期）
 ├── memory/              pipeline（事实/小抄/日记/周记/召回）· transcript（读 AstrBot 对话历史）
@@ -83,8 +84,12 @@ astrlover/
 否则下一轮她不知道自己说过。写回时给她自己的消息打时间戳（对方的消息
 AstrBot 本来就带时间，不重复打）；她模仿上下文自写的时间戳在生成后剥掉。
 
-**D7 排期 = 指令重放**：`/plan` 存一行控制台指令，心跳到点交给
-`console.handle()` 原样执行，回执发回原控制台会话。零重复实现。
+**D7 排期与按钮都是指令重放**：`/plan` 存一行控制台指令，心跳到点交给
+`console.handle()` 原样执行；inline 按钮携带的也是一行指令，点击后走同一条路。
+零重复实现，也不会出现"按钮能做而打字做不到"的能力分叉。
+回执类型是 `Reply(str)`——str 的子类，带一个 buttons 属性，
+所以把回执当字符串用的所有地方（拼接、startswith、`if reply`）一行都不用改。
+callback_data 有 64 字节硬上限，超了走内存令牌表（重载后过期，明确提示）。
 
 **D8 频控只约束自主行为**：手动指令随时可用、不消耗配额、不重置计时；
 触发限制时返回给她一句能读懂的话，她就不会反复重试。

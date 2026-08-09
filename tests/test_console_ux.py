@@ -45,9 +45,11 @@ class _FakeBot:
     def __init__(self):
         self.sent = []
         self.actions = []
+        self.markups = []
 
-    async def send_message(self, chat_id, text, parse_mode=None):
+    async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
         self.sent.append((text, parse_mode))
+        self.markups.append(reply_markup)
 
     async def send_chat_action(self, chat_id, action):
         self.actions.append(action)
@@ -59,8 +61,11 @@ class _FakeApp:
 
 
 def _bot_with(handler, slow=False):
+    from astrlover.director.keyboard import Callbacks
+
     b = DirectorBot.__new__(DirectorBot)
     b.application = _FakeApp(_FakeBot())
+    b.callbacks = Callbacks()
     b.app = None
     b.console = type("C", (), {"handle": staticmethod(handler)})()
     return b
@@ -113,8 +118,11 @@ def test_crash_is_reported_not_swallowed(monkeypatch):
 
 
 def test_say_uses_html_parse_mode():
+    from astrlover.director.keyboard import Callbacks
+
     b = DirectorBot.__new__(DirectorBot)
     b.application = _FakeApp(_FakeBot())
+    b.callbacks = Callbacks()
     run(b.say(42, "跑 `/gallery scan`"))
     text, mode = b.application.bot.sent[0]
     assert mode == "HTML" and "<code>" in text

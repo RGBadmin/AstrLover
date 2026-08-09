@@ -65,9 +65,11 @@ class Records:
         lines.append(f"p 排期　{await n('SELECT COUNT(*) n FROM pending_actions WHERE status=?', ('pending',))} 个待执行")
         lines.append(f"o 情绪　{await n('SELECT COUNT(*) n FROM mood WHERE active=1')} 个在场")
         lines.append("")
-        lines.append("状态：" + "　".join(
-            f"{label} {await self.get_state(key) or '—'}" for key, label in STATES.items()
-        ))
+        # 不能写成 join(生成器)——里面有 await，那是个异步生成器，join 吃不了
+        states = []
+        for key, label in STATES.items():
+            states.append(f"{label} {await self.get_state(key) or '—'}")
+        lines.append("状态：" + "　".join(states))
         lines.append("\n`/rec <类型>` 看条目 · `/rec add <类型> <内容>` · "
                      "`/rec edit <编号> <内容>` · `/rec del <编号>`")
         return "\n".join(lines)

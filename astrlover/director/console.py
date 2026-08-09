@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 
 from astrbot.api import logger
 
+from .keyboard import Reply, grid
+
 MENU = [
     ("umo", "列出所有会话，挑一个绑"),
     ("link", "绑定目标会话 · `/link UMO`"),
@@ -93,10 +95,16 @@ class DirectorConsole:
         if not latest:
             return "（AstrBot 里还没有任何对话记录）"
         current = app.state_target
-        lines = ["会话列表（复制一整行执行即可绑定）：", ""]
-        for umo, _ in sorted(latest.items(), key=lambda kv: -kv[1])[:30]:
-            lines.append(f"`/link {umo}`" + ("   ← 当前绑定" if umo == current else ""))
-        return "\n".join(lines)
+        rows = sorted(latest.items(), key=lambda kv: -kv[1])[:20]
+        lines = ["**会话列表**　点一下就绑上", ""]
+        buttons = []
+        for umo, _ in rows:
+            here = umo == current
+            lines.append(f"`{umo}`" + ("　← 当前绑定" if here else ""))
+            # 按钮上只留会话 id，UMO 全文太长，一行放不下
+            tail = umo.rsplit(":", 1)[-1] or umo
+            buttons.append([(("✅ " if here else "") + tail, f"/link {umo}")])
+        return Reply("\n".join(lines), buttons)
 
     async def cmd_link(self, arg: str = "", chat_id=None) -> str:
         app = self.app
@@ -226,7 +234,8 @@ class DirectorConsole:
         app = self.app
         if arg.strip().lower() in ("now", "立刻", "试试"):
             return await app.proactive.fire(force=True)
-        return await app.proactive.status()
+        return Reply(await app.proactive.status(),
+                     [[("现在就发一条", "/proactive now")]])
 
     # ============================================================ 生命层
     async def cmd_status(self, arg: str = "", chat_id=None) -> str:
@@ -295,10 +304,14 @@ class DirectorConsole:
         rows = await app.dao.pending_list(20)
         if not rows:
             return "（没有排期）"
-        return "⏰ 排期：\n" + "\n".join(
-            f"#{r['id']} {datetime.fromtimestamp(r['due_ts']).strftime('%m-%d %H:%M')} "
-            f"{r['payload'].get('cmd', r['kind'])}" for r in rows
-        )
+        lines = ["**⏰ 排期**", ""]
+        buttons = []
+        for r in rows:
+            when = datetime.fromtimestamp(r["due_ts"]).strftime("%m-%d %H:%M")
+            cmd = r["payload"].get("cmd", r["kind"])
+            lines.append(f"#{r['id']}　{when}　`{cmd}`")
+            buttons.append([(f"取消 #{r['id']}（{when}）", f"/plans cancel {r['id']}")])
+        return Reply("\n".join(lines), buttons)
 
     def _parse_when(self, s: str) -> int | None:
         s = (s or "").strip()
@@ -325,10 +338,22 @@ class DirectorConsole:
 
     # ============================================================ 相册与诊断
     async def cmd_gallery(self, arg: str = "", chat_id=None) -> str:
-        return await self.app.gallery_command(arg, self._progress(chat_id))
+        text = await self.app.gallery_command(arg, self._progress(chat_id))
+        if arg.strip():
+            return text
+        return Reply(text, [
+            [("扫目录", "/gallery scan"), ("看状态", "/gallery")],
+            [("建索引", "/gallery index auto"), ("停索引", "/gallery index stop")],
+            [("转向量", "/gallery embed auto"), ("停向量", "/gallery embed stop")],
+            [("测向量区分度", "/gallery embed test"), ("揪脏描述", "/gallery clean")],
+            [("失败重排队", "/gallery retry"), ("随机看一张", "/gallery show")],
+        ])
 
     async def cmd_vision(self, arg: str = "", chat_id=None) -> str:
-        return await self.app.vision_command(arg)
+        text = await self.app.vision_command(arg)
+        if arg.strip():
+            return text
+        return Reply(text, [[("跑一次自检", "/vision test"), ("补跑旧图", "/vision backfill")]])
 
     async def cmd_presence(self, arg: str = "", chat_id=None) -> str:
         app = self.app
@@ -359,7 +384,11 @@ class DirectorConsole:
             return "还没初始化好。"
         parts = (arg or "").split(None, 1)
         if not parts:
-            return await app.records.overview()
+            return Reply(
+                await app.records.overview(),
+                grid([(label, f"/rec {key}") for key, label in app.records.KINDS
+                      if key != "state"], per_row=4),
+            )
         head = parts[0].lower()
         rest = parts[1] if len(parts) > 1 else ""
         if head == "add":
@@ -384,7 +413,12 @@ class DirectorConsole:
         return await app.records.listing(head, 30)
 
     async def cmd_help(self, arg: str = "", chat_id=None) -> str:
-        return "**指令一览**\n\n" + "\n".join(f"`/{k}` — {d}" for k, d in MENU)
+        return Reply(
+            "**指令一览**\n\n" + "\n".join(f"`/{k}` — {d}" for k, d in MENU),
+            grid([("会话", "/umo"), ("状态", "/status"), ("记录", "/rec"),
+                  ("相册", "/gallery"), ("排期", "/plans"), ("主动", "/proactive"),
+                  ("插件状态", "/presence"), ("视觉自检", "/vision")], per_row=4),
+        )
 
     def _progress(self, chat_id):
         async def cb(text: str):

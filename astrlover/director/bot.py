@@ -10,6 +10,7 @@ import re
 from astrbot.api import logger
 
 from .console import MENU, DirectorConsole
+from .keyboard import Callbacks, markup
 
 _TG_LIMIT = 4000
 _ACK_AFTER = 3      # 超过这么多秒还没跑完，就补一条「执行中」
@@ -22,6 +23,7 @@ class DirectorBot:
         self.app = app
         self.console = DirectorConsole(app)
         self.application = None
+        self.callbacks = Callbacks()   # 长指令 ↔ 短令牌（回调数据 64 字节上限）
 
     @property
     def configured(self) -> bool:
@@ -39,12 +41,15 @@ class DirectorBot:
             logger.info("[AstrLover] 未配置控制台 Token，导演 bot 停用。")
             return
         try:
-            from telegram.ext import ApplicationBuilder, MessageHandler, filters
+            from telegram.ext import (
+                ApplicationBuilder, CallbackQueryHandler, MessageHandler, filters,
+            )
 
             builder = ApplicationBuilder().token(str(self.app.conf.get("console_token")).strip())
             if proxy := str(self.app.conf.get("console_proxy") or "").strip():
                 builder = builder.proxy(proxy).get_updates_proxy(proxy)
             self.application = builder.build()
+            self.application.add_handler(CallbackQueryHandler(self._on_callback))
             self.application.add_handler(MessageHandler(filters.ALL, self._on_update))
 
             await self.application.initialize()
@@ -145,18 +150,54 @@ class DirectorBot:
 
     async def say(self, chat_id, text: str):
         """回消息。超长切段——切完再逐段转 HTML，每段各自闭合，
-        否则一对反引号被切在两条消息里会各留半个标签。"""
+        否则一对反引号被切在两条消息里会各留半个标签。
+
+        text 是 Reply 时最后一段挂上按钮：按钮只该出现一次，
+        挂在最后一条消息上，正好在用户视线落点。
+        """
         if self.application is None or not text:
             return
-        for i in range(0, len(text), _TG_LIMIT):
-            chunk = text[i:i + _TG_LIMIT]
+        chunks = [text[i:i + _TG_LIMIT] for i in range(0, len(text), _TG_LIMIT)]
+        kb = markup(getattr(text, "buttons", None), self.callbacks)
+        for i, chunk in enumerate(chunks):
+            last = i == len(chunks) - 1
             try:
                 await self.application.bot.send_message(
                     chat_id=chat_id, text=self._html(chunk), parse_mode="HTML",
+                    reply_markup=kb if last else None,
                 )
             except Exception as e:
                 logger.warning(f"[AstrLover] 控制台回复失败（改发纯文本重试）：{e}")
                 try:
-                    await self.application.bot.send_message(chat_id=chat_id, text=chunk)
+                    await self.application.bot.send_message(
+                        chat_id=chat_id, text=chunk, reply_markup=kb if last else None
+                    )
                 except Exception as e2:
                     logger.warning(f"[AstrLover] 控制台回复彻底失败：{e2}")
+
+    # ------------------------------------------------------------------
+    async def _on_callback(self, update, _context):
+        """按钮点击 = 替他把那行指令发出去，走同一条执行通道。"""
+        q = update.callback_query
+        if q is None:
+            return
+        try:
+            await q.answer()      # 不应答的话按钮会一直转圈
+        except Exception:
+            pass
+        if str(q.from_user.id) not in self.admins():
+            return
+        cmd = self.callbacks.decode(q.data or "")
+        chat_id = q.message.chat_id if q.message else None
+        if not cmd:
+            # 令牌表是内存的，插件重载后旧消息上的按钮就失效了
+            await self.say(chat_id, "这个按钮过期了（插件重载过），重发一次指令吧。")
+            return
+        await self.say(chat_id, f"▶️ `{cmd}`")
+        try:
+            reply = await self.console.handle(cmd, chat_id=chat_id)
+        except Exception as e:
+            logger.error("[AstrLover] 按钮执行出错：", exc_info=True)
+            reply = f"执行出错：{type(e).__name__}: {e}"
+        if reply:
+            await self.say(chat_id, reply)
