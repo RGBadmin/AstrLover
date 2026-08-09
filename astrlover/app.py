@@ -356,13 +356,16 @@ class App:
             self.llm.owner_umo = umo
         logger.info(f"[AstrLover] 绑定会话：{umo or '（无）'}")
 
-    async def send_photo_as_her(self, photo_id: str, caption: str = "") -> str:
-        """控制台/排期用：借她的身份把照片发到绑定会话。"""
+    async def _deliver_image(self, path: str, caption: str, note: str) -> str:
+        """借她的身份把一张图发到绑定会话，并记进她的历史。
+
+        写历史这步不能省：否则她下一轮不知道自己发过图，
+        你说"刚才那张"她会一脸茫然。
+        """
         from astrbot.api.event import MessageChain
 
-        kind, row, path = await self.sender.resolve(photo_id)
-        if row is None or path is None:
-            return f"找不到 {photo_id} 或文件已不在。"
+        if not self.state_target:
+            return "还没绑定目标会话（`/link`）。"
         chain = MessageChain()
         if caption:
             chain.message(caption)
@@ -373,11 +376,35 @@ class App:
             return f"没发出去：{e}"
         if not ok:
             return "找不到目标平台，那个 bot 还连着吗？"
+        await self.bridge.append_assistant(self.state_target, caption or note)
+        return ""
+
+    async def send_photo_as_her(self, photo_id: str, caption: str = "") -> str:
+        """控制台/排期用：把相册或存档里的某张发出去。"""
+        kind, row, path = await self.sender.resolve(photo_id)
+        if row is None or path is None:
+            return f"找不到 {photo_id} 或文件已不在。"
+        if err := await self._deliver_image(str(path), caption, f"[发了一张照片 {photo_id}]"):
+            return err
         if kind == "album":
             await self.album.mark_sent(int(row["id"]))
-        note = caption or f"[发了一张照片 {photo_id}]"
-        await self.bridge.append_assistant(self.state_target, note)
         return f"已发出 {photo_id}" + (f"，附言：{caption}" if caption else "")
+
+    async def generate_as_her(self, situation: str, caption: str = "") -> str:
+        """控制台/排期用：现场"拍"一张再发。相册里翻不到的画面才走这条。"""
+        if self.imagegen is None or not self.imagegen.available:
+            return "生图后端没配（面板「生图」组），先配一个再来。"
+        situation = (situation or "").strip()
+        if not situation:
+            return "要画什么？`/generate 阳台上的晚霞`"
+        path = await self.imagegen.generate(situation)
+        if not path:
+            return f"没拍成（生成失败了）：{situation[:40]}"
+        if err := await self._deliver_image(path, caption, f"[现拍了一张：{situation[:40]}]"):
+            return err
+        await self.dao.add_event("photo_gen", f"现拍了一张照片给他：{situation[:50]}", motivation="")
+        logger.info(f"[AstrLover] 控制台生图并发送：{situation[:40]}")
+        return f"🖼 已生成并发出：{situation[:60]}" + (f"\n附言：{caption}" if caption else "")
 
     async def fix_improvised(self, note: str):
         fact_id = await self.dao.add_fact("self", note, category="编造固化", source="improvise")

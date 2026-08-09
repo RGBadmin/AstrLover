@@ -19,6 +19,7 @@ MENU = [
     ("say", "让她原样说一句 · `/say` 内容"),
     ("act", "给个方向，她自己组织语言 · `/act` 方向"),
     ("photo", "发张照片 · `/photo` 方向，或 `/photo g123` [附言]"),
+    ("generate", "现场生成一张再发 · `/generate` 画面描述 [| 附言]"),
     ("moment", "让她发条动态 · `/moment` [内容]"),
     ("avatar", "给她换个头像 · `/avatar` [分类]"),
     ("signature", "改她的签名 · `/signature` [内容]"),
@@ -40,8 +41,9 @@ MENU = [
 _PLAN_INTENT = (
     "把管理员的话解析成定时任务 JSON："
     '{"when": "+30m 或 HH:MM 或 YYYY-MM-DD HH:MM", "cmd": "/say 内容 或 /act 方向 '
-    '或 /moment 主题 或 /photo 方向 或 /avatar 或 /signature"}。'
-    "「提醒他/跟他说」类用 `/act`；要求原话转达用 `/say`；发动态用 `/moment`。"
+    '或 /moment 主题 或 /photo 方向 或 /generate 画面 或 /avatar 或 /signature"}。'
+    "「提醒他/跟他说」类用 `/act`；要求原话转达用 `/say`；发动态用 `/moment`；"
+    "「拍一张/画一张」类用 `/generate`，从相册里找现成的用 `/photo`。"
     "解析不出时间就把 when 设为空字符串。只输出 JSON。"
 )
 
@@ -153,7 +155,7 @@ class DirectorConsole:
         if not arg:
             return "用法：`/act` 方向（她带着人格和最近对话自己组织语言）"
         if re.search(r"(拍|照片|图|自拍)", arg):
-            hint = "\n（提示：`/act` 只会让她说话、不发图。要图用 `/photo <方向>`）"
+            hint = "\n（提示：`/act` 只会让她说话、不发图。相册里找用 `/photo`，现拍用 `/generate`）"
         else:
             hint = ""
         try:
@@ -182,9 +184,28 @@ class DirectorConsole:
                 return "她没想出要发什么。直接给编号也行：`/photo g123` [附言]"
             rows, _ = await app.album.search(keywords=direction, want=direction, top_k=1)
             if not rows:
-                return f"她想找「{direction[:30]}」，但相册里没有对得上的。"
+                return (f"她想找「{direction[:30]}」，但相册里没有对得上的。\n"
+                    f"要现拍一张就发 `/generate {direction[:30]}`")
             photo_id = f"g{rows[0]['id']}"
         return await app.send_photo_as_her(photo_id, caption)
+
+    async def cmd_generate(self, arg: str = "", chat_id=None) -> str:
+        """现场生成一张再发。跟 /photo 分开：检索几乎免费，生图每张要钱要时间，
+        混在一个指令里容易误触发。"""
+        app = self.app
+        arg = arg.strip()
+        if arg:
+            head, _, rest = arg.partition("|")     # 描述 | 附言
+            return await app.generate_as_her(head.strip(), rest.strip())
+        if app.imagegen is None or not app.imagegen.available:
+            return "生图后端没配（面板「生图」组）。"
+        idea = await self._improvise("photo")
+        if not idea:
+            return "她没想出要拍什么。直接给描述也行：`/generate 阳台上的晚霞`"
+        return Reply(
+            f"她想拍：\n**{idea}**\n\n生图要花钱，确认再拍。",
+            [[("就这么拍", f"/generate {idea}"), ("换一个", "/generate")]],
+        )
 
     # ============================================================ 动态/资料
     async def cmd_moment(self, arg: str = "", chat_id=None) -> str:
