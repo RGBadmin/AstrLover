@@ -263,3 +263,41 @@ def test_unknown_type_is_ignored(app_factory):
         await app.terminate()
 
     run(go())
+
+
+# ---------------------------------------------------------------- 负面词
+def test_api_never_sends_negative_text():
+    """这几个接口没有 negativePrompt 字段，负面词拼上去就是当正文送。
+
+    对扩散模型负向是独立通道、做减法；对语言模型驱动的生图，
+    「避免出现拼图」里的「拼图」照样进注意力，等于自己往里塞。
+    """
+    spec = PromptSpec(positive="一次快门拍下的单张照片，客厅沙发",
+                      negative="collage, grid, stick thin legs, bad hands")
+    b = _backend("https://x/v1/chat/completions")
+
+    for payload, _h in (b._payload_openai(spec), b._payload_grok(spec)):
+        blob = str(payload)
+        for word in ("collage", "grid", "stick thin", "bad hands", "避免"):
+            assert word not in blob, f"负面词漏进了正文：{word}"
+
+    payload, _h = b._payload_gemini(spec)
+    blob = str(payload)
+    for word in ("collage", "stick thin", "避免"):
+        assert word not in blob, f"负面词漏进了正文：{word}"
+    # 正面描述本身要在
+    assert "一次快门" in str(b._payload_openai(spec)[0])
+
+
+def test_diffusion_backends_still_get_negatives():
+    """NovelAI / ComfyUI 有真的负向通道，那边照发。"""
+    from astrlover.imagegen.novelai import _UC
+
+    assert "sketch" in _UC and "collage" in _UC
+
+    import json
+    from pathlib import Path
+
+    wf = Path(__file__).resolve().parent.parent / "astrlover" / "imagegen" / "comfyui.py"
+    assert "{NEGATIVE}" in wf.read_text(encoding="utf-8"), "ComfyUI 的占位不能删"
+    assert json  # 只是确认 import 可用

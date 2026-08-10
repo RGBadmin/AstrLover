@@ -399,12 +399,13 @@ class App:
             return "要画什么？`/generate 阳台上的晚霞`"
         path = await self.imagegen.generate(situation)
         if not path:
-            return f"没拍成（生成失败了）：{situation[:40]}"
-        if err := await self._deliver_image(path, caption, f"[现拍了一张：{situation[:40]}]"):
+            return f"没拍成（生成失败了）：{situation}"
+        if err := await self._deliver_image(path, caption, f"[现拍了一张：{situation}]"):
             return err
-        await self.dao.add_event("photo_gen", f"现拍了一张照片给他：{situation[:50]}", motivation="")
-        logger.info(f"[AstrLover] 控制台生图并发送：{situation[:40]}")
-        return f"🖼 已生成并发出：{situation[:60]}" + (f"\n附言：{caption}" if caption else "")
+        # 事件是她"做过什么"的原始记录，日记和回忆都从这儿取素材，截断了就永久丢了
+        await self.dao.add_event("photo_gen", f"现拍了一张照片给他：{situation}", motivation="")
+        logger.info(f"[AstrLover] 控制台生图并发送：{situation}")
+        return f"🖼 已生成并发出：{situation}" + (f"\n附言：{caption}" if caption else "")
 
     async def fix_improvised(self, note: str):
         fact_id = await self.dao.add_fact("self", note, category="编造固化", source="improvise")

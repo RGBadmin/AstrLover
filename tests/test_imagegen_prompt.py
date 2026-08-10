@@ -99,8 +99,10 @@ def test_prompt_never_looks_like_a_grid_layout(gen_app):
         # 也不能长得像逐格列表：格子要压在同一行
         assert "左上：" not in pos and "正中：" not in pos
         assert pos.count("\n") <= 3, f"分行太多，像分格布局：{pos!r}"
-        # 得明说是一张
-        assert "单幅照片" in pos
+        # 得明说是一张——而且要正面表述，不能写"不要拼贴"
+        assert "单张照片" in pos
+        for neg in ("不要", "不是", "避免"):
+            assert neg not in pos, f"正文里有否定式「{neg}」，等于把不想要的送进注意力"
         # 负面词里要压住拼图
         for bad in ("collage", "grid", "split screen", "multiple views"):
             assert bad in spec.negative
@@ -141,7 +143,7 @@ def test_selfie_carries_appearance_and_anchors(gen_app):
         app = await gen_app(_SELFIE)
         refs = ["/tmp/a.png", "/tmp/b.png", "/tmp/c.png"]
         spec = await build_spec(app, "想给他看晚霞", refs)
-        assert spec.positive.startswith("单幅照片"), "第一句就得钉死是一张"
+        assert "单张照片" in spec.positive.splitlines()[0], "第一句就得钉死是一张"
         assert "人物：黑长直" in spec.positive
         # 带不带在这儿定，带几张由 ImageGen.references 定（见 test_reference_image）
         assert spec.reference_images == refs

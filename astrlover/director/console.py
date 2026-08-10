@@ -184,8 +184,9 @@ class DirectorConsole:
                 return "她没想出要发什么。直接给编号也行：`/photo g123` [附言]"
             rows, _ = await app.album.search(keywords=direction, want=direction, top_k=1)
             if not rows:
-                return (f"她想找「{direction[:30]}」，但相册里没有对得上的。\n"
-                    f"要现拍一张就发 `/generate {direction[:30]}`")
+                # 这条要能直接复制去执行，截断了就是残句
+                return (f"她想找「{direction}」，但相册里没有对得上的。\n"
+                        f"要现拍一张就发 `/generate {direction}`")
             photo_id = f"g{rows[0]['id']}"
         return await app.send_photo_as_her(photo_id, caption)
 

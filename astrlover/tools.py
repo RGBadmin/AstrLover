@@ -141,8 +141,8 @@ class Tools:
         chain.file_image(path)
         await event.send(chain)
         if app.dao:
-            await app.dao.add_event("photo_gen", f"现拍了一张照片给他：{situation[:50]}", motivation="")
-        logger.info(f"[AstrLover] 生成并发送照片：{situation[:40]}")
+            await app.dao.add_event("photo_gen", f"现拍了一张照片给他：{situation}", motivation="")
+        logger.info(f"[AstrLover] 生成并发送照片：{situation}")
         return "照片已经发出去了。照常继续说你的话。"
 
     # ================================================================ 语音

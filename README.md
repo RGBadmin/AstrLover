@@ -457,6 +457,8 @@ barefoot, lamp, warm lighting, night, depth of field, best quality, absurdres
 
 认不出的地址直接报错，把三种写法列给你——中转站各开各的，同一域名下三种端点可能都在、也可能只开一个，补错了就是个看不懂的 404，填全反而最省事。
 
+**不发负面提示词。** Gemini 这类接口根本没有 `negativePrompt` 字段（`generationConfig` 里只有 `imageConfig`），拼进正文就是当描述送进去——对扩散模型负向是独立通道、做减法，对语言模型驱动的生图，「避免出现拼图」里的「拼图」照样进注意力，等于自己往里塞。所以约束一律靠正面表述：要单幅就写「一次快门拍下的单张照片」，而不是「不要拼贴」。`negative` 只发给真有负向通道的 NovelAI 和 ComfyUI。
+
 **画幅走 `generationConfig.imageConfig.aspectRatio`**（竖 `3:4` / 横 `4:3` / 方 `1:1`），由代码按她选的画幅自动映射。把尺寸写进提示词文字是没用的——网关会静默忽略，不报错、图照出、尺寸不对，最难查的那种。
 
 类型专属的旋钮是全局一份，不跟着槽复制：**API 出图尺寸**（`1K`/`2K`/`4K`，直接影响计费，4K 响应体能到 6.5 MB）、**ComfyUI workflow 文件**（用 `{POSITIVE}` `{NEGATIVE}` `{SEED}` `{WIDTH}` `{HEIGHT}` 占位）、**NovelAI 步数**（默认 24，28 以上收益很小）。NovelAI 地址留空则用官方。

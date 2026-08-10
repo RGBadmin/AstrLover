@@ -76,11 +76,19 @@ class ApiBackend(ImageBackend):
         return _ASPECT.get(spec.orientation, "3:4")
 
     def _text(self, spec: PromptSpec) -> str:
+        """只发正面描述。
+
+        **不拼负面词**：这几个接口都没有 negativePrompt 字段
+        （Gemini 的 generationConfig 里只有 imageConfig），拼上去就是
+        当正文送进去。对扩散模型负向是独立通道、做减法；对语言模型驱动的
+        生图，「避免出现拼图」里的「拼图」照样进注意力，等于自己往里塞。
+        约束要靠正面表述——想要单幅就写"一次成像的完整画面"，
+        而不是"不要拼贴"。
+        spec.negative 留给真有负向通道的后端（NovelAI / ComfyUI）。
+        """
         text = spec.positive
         if spec.reference_images:
             text = "以附带图片中的人物为同一人（保持长相一致），生成新照片。\n" + text
-        if spec.negative:
-            text += f"\n\n避免出现：{spec.negative}"
         return text
 
     @staticmethod

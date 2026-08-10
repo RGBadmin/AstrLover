@@ -28,11 +28,15 @@ _NEGATIVE = (
     # "把这几块拼成一张"，出来就是九宫格拼图
     "collage, photo collage, grid, photo grid, split screen, multiple panels, "
     "multiple views, contact sheet, montage, borders, "
+    "inset, picture in picture, close-up overlay, cropped body part, "
     "lowres, bad anatomy, bad hands, extra fingers, deformed face, blurry, "
     "watermark, text, logo, jpeg artifacts"
 )
 # 她入镜时才加：拍风景时"different person"之类是无意义的负面词
-_NEGATIVE_PERSON = "different person, inconsistent face, multiple people"
+# 上一轮全身照腿被拉成细杆——比例失真也得压
+_NEGATIVE_PERSON = ("different person, inconsistent face, multiple people, "
+                    "elongated limbs, disproportionate body, stick thin legs, "
+                    "fashion illustration proportions")
 
 _JSON_CONTRACT = (
     "\n\n【输出】\n"
@@ -95,7 +99,9 @@ _CELL_WORDS = {
     "左中": "画面左侧", "正中": "画面正中", "右中": "画面右侧",
     "左下": "左下角", "下中": "下方中间", "右下": "右下角",
 }
-_SINGLE_FRAME = "单幅照片，一个完整连贯的画面。"
+# 只用正面表述。写「不要拼贴」等于把"拼贴"送进模型的注意力——
+# 语言模型驱动的生图没有负向通道，提到就是提到。
+_SINGLE_FRAME = "一次快门拍下的单张照片，整幅是同一个连续空间，一个主体贯穿全画面。"
 
 
 def _compose(overview: str, grid: dict, appearance: str, with_her: bool) -> str:
@@ -170,7 +176,7 @@ async def build_spec(app, situation: str, anchors: list[str]) -> PromptSpec:
     # 否则 positive 里只剩「人物：…」——情境整个丢了，出来的图跟要求毫无关系，
     # 而且因为字符串非空，光判断 positive 是不是空是查不出来的
     if not overview and not any(str(grid.get(k, "")).strip() for k in _GRID_ORDER):
-        logger.warning(f"[AstrLover] 生图规划没给出画面内容，退回直白拼接：{situation[:40]}")
+        logger.warning(f"[AstrLover] 生图规划没给出画面内容，退回直白拼接：{situation}")
         return fallback_spec(await app.appearance_text(), situation, anchors)
 
     # 她入镜才去取外观——不入镜时连这次生成都不该问她长什么样
@@ -180,7 +186,7 @@ async def build_spec(app, situation: str, anchors: list[str]) -> PromptSpec:
     tags = _clean_tags(str(plan.get("tags") or ""), with_her)
     w, h = SIZES[orientation]
     logger.info(f"[AstrLover] 生图规划：{orientation} {w}x{h}，"
-                f"{'她入镜' if with_her else '不入镜'}｜{situation[:40]}")
+                f"{'她入镜' if with_her else '不入镜'}｜{situation}")
     logger.debug(f"[AstrLover] 标签：{tags}")
     return PromptSpec(
         positive=positive,
