@@ -33,7 +33,7 @@
 main.py                  仅 @filter 注册与薄委托（钩子/12 个工具/静默拦截）
 astrlover/
 ├── app.py               装配中心 + 管线钩子实现 + 控制台委托（gallery/vision/status）
-├── settings.py          设置 SPEC（71 项）+ Settings：接线取配置页，其余取库
+├── settings.py          设置 SPEC（72 项）+ Settings：接线取配置页，其余取库
 ├── config.py            生命层配置视图（读同一个 Settings）
 ├── tools.py             LLM 工具实现体
 ├── actions.py           排期执行 = 控制台指令重放
@@ -52,7 +52,7 @@ astrlover/
 ├── memory/              pipeline（事实/小抄/日记/周记/召回）· transcript（读 AstrBot 对话历史）
 ├── persona/prompt.py    注入块组装（人设不在这里）
 ├── records.py           统一记录门面：增删改 + 生命周期清理
-├── imagegen/            三后端 + prompts（摄影语言模板）
+├── imagegen/            api（协议看地址）· comfyui · novelai + prompts（摄影语言模板）
 │                        prompt_builder（先规划拍什么/画幅/入不入镜，再写稿）
 ├── voice/               TTS → ogg 语音条
 ├── panel/ + pages/panel Web 面板（Plugin Pages + register_web_api）
@@ -116,7 +116,7 @@ callback_data 有 64 字节硬上限，超了走内存令牌表（重载后过�
 
 **D10 配置两处、各管各的**：AstrBot 插件配置页只留 5 项接线
 （恋人 id、控制台 token/管理员、TTS Provider id、生命层开关）——那几项
-决定"插件怎么找到你和你的服务"，装机设一次。其余 71 项在 settings.py
+决定"插件怎么找到你和你的服务"，装机设一次。其余 72 项在 settings.py
 声明、存数据库、由面板设置页编辑：它们都是**看着结果反复调**的东西
 （重试次数、冷却、top_k、提示词），本来就该在能看到结果的地方调，
 所以设置页旁边直接放了视觉/向量的「测一下」按钮。
@@ -170,6 +170,6 @@ Embedding Provider——报错落在插件自己的日志和面板上，能直�
 
 ## 五、测试
 
-`python -m pytest tests` —— 185 项，不需要安装 AstrBot：
+`python -m pytest tests` —— 204 项，不需要安装 AstrBot：
 `conftest.py` 提供 astrbot 桩模块，`test_smoke_app.py` 用假 Context 真正启动
 App 跑通装配、钩子注入、相册扫描检索、图片折叠、控制台命令与全部降级路径。

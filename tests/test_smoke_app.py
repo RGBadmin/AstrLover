@@ -119,14 +119,12 @@ def test_settings_override_and_reset(app_factory):
         changed = await conf.save(app.dao, {
             "vision_concurrency": "8",       # 字符串按 int 规范化
             "vision_stream": "true",         # 字符串按 bool 规范化
-            "ig_backend_order": "nanobanana, novelai",   # 逗号串按 list 规范化
             "life_partner_id": "999",        # 接线项不该被设置页改动
             "不存在的键": "x",
         })
-        assert set(changed) == {"vision_concurrency", "vision_stream", "ig_backend_order"}
+        assert set(changed) == {"vision_concurrency", "vision_stream"}
         assert conf.get("vision_concurrency") == 8
         assert conf.get("vision_stream") is True
-        assert conf.get("ig_backend_order") == ["nanobanana", "novelai"]
         assert conf.get("life_partner_id") == "123"         # 接线优先，没被覆盖
 
         # 重启后仍在

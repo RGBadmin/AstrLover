@@ -13,7 +13,7 @@ import aiohttp
 from .base import ImageBackend
 from .prompt_builder import PromptSpec
 
-_API = "https://image.novelai.net/ai/generate-image"
+_API = "https://image.novelai.net/ai/generate-image"   # 地址留空时用官方
 
 # NAI 官方 UC（undesired content）那一档的常用集合。中文负面词它同样读不懂，
 # 用标签模式时就该换成这套。
@@ -75,9 +75,11 @@ class NovelAIBackend(ImageBackend):
         headers = {"Authorization": f"Bearer {self.conf.get('api_key')}"}
         timeout = aiohttp.ClientTimeout(total=180)
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(_API, json=payload, headers=headers) as resp:
+            url = str(self.conf.get("url") or "").strip() or _API
+            async with session.post(url, json=payload, headers=headers) as resp:
                 if resp.status != 200:
-                    raise RuntimeError(f"HTTP {resp.status}: {(await resp.text())[:200]}")
+                    raise RuntimeError(
+                        f"HTTP {resp.status}（POST {url}）：{(await resp.text())[:200]}")
                 data = await resp.read()
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
             names = zf.namelist()

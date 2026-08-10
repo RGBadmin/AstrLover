@@ -32,29 +32,29 @@ class ImageGen:
         self._build()
 
     def _build(self):
+        """主用一个、备用一个。主的挂了才走备的，没有第三层。
+
+        以前是一串优先顺序 + 每个后端各一套配置，配起来要在好几处对照；
+        实际用起来永远只关心"主用哪个、坏了退到哪个"，两槽就够。
+        """
+        from .api import ApiBackend
         from .comfyui import ComfyUIBackend
-        from .nanobanana import NanoBananaBackend
         from .novelai import NovelAIBackend
 
-        registry = {
-            "nanobanana": NanoBananaBackend,
-            "comfyui": ComfyUIBackend,
-            "novelai": NovelAIBackend,
-        }
-        for name in self.app.cfg.imagegen_order:
-            cls = registry.get(name)
+        registry = {"api": ApiBackend, "comfyui": ComfyUIBackend, "novelai": NovelAIBackend}
+        for slot, conf in self.app.cfg.imagegen_slots():
+            cls = registry.get(str(conf.get("type", "")).strip().lower())
             if cls is None:
                 continue
-            backend = cls(self.app.cfg.imagegen_backend(name))
-            if name == "comfyui":
+            backend = cls(conf)
+            backend.slot = slot
+            if cls is ComfyUIBackend:
                 backend.data_dir = self.app.data_dir  # workflow 文件在数据目录
             if backend.configured():
                 self.backends.append(backend)
         if self.backends:
-            logger.info(
-                "[AstrLover] 生图后端就绪："
-                + " → ".join(b.name for b in self.backends)
-            )
+            logger.info("[AstrLover] 生图后端就绪：" + " → ".join(
+                f"{b.slot}={b.name}" for b in self.backends))
 
     @property
     def available(self) -> bool:
@@ -64,7 +64,7 @@ class ImageGen:
         """按情境需求生成"照片"，保存后返回文件路径。
 
         外观锚点图放 data/plugin_data/astrlover/persona/anchors/ 下
-        （挑几张最能代表她长相的照片，NanoBanana 以此保证同一个人）。
+        （挑几张最能代表她长相的照片，支持参考图的后端以此保证同一个人）。
         产物落到 presence 相册目录（若已配置）的 aiimages/ 子目录，
         之后 /gallery scan + index 即回流成她相册的一部分。
         """

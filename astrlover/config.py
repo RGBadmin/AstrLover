@@ -62,21 +62,24 @@ class Cfg:
         return max(1, self._i("life_max_silence_hours", 30))
 
     # ---- 生图 ----
-    @property
-    def imagegen_order(self) -> list[str]:
-        v = self._c.get("ig_backend_order", [])
-        return [str(x).strip() for x in v if str(x).strip()] if isinstance(v, list) else []
+    def imagegen_slots(self) -> list[tuple[str, dict]]:
+        """主用、备用两槽。返回 [(槽名, 配置)]，未配的自然被后端的 configured() 滤掉。
 
-    def imagegen_backend(self, name: str) -> dict:
+        类型专属的旋钮（ComfyUI 的 workflow、NovelAI 的步数、API 的出图尺寸）
+        是全局一份——它们描述"那种供应商怎么跑"，不该跟着槽复制两遍。
+        """
         c = self._c
-        if name == "nanobanana":
-            return {"api_key": c.get("ig_nb_api_key", ""), "base_url": c.get("ig_nb_base_url", ""),
-                    "model": c.get("ig_nb_model", ""), "format": c.get("ig_nb_format", "auto"),
-                    "image_size": c.get("ig_nb_image_size", "1K")}
-        if name == "comfyui":
-            return {"base_url": c.get("ig_comfy_base_url", ""), "api_key": c.get("ig_comfy_api_key", ""),
-                    "workflow_file": c.get("ig_comfy_workflow", "comfyui_workflow.json")}
-        if name == "novelai":
-            return {"api_key": c.get("ig_nai_api_key", ""), "model": c.get("ig_nai_model", ""),
-                    "steps": c.get("ig_nai_steps", 24)}
-        return {}
+        out = []
+        for slot, prefix in (("主", "ig_main"), ("备", "ig_backup")):
+            out.append((slot, {
+                "type": str(c.get(f"{prefix}_type", "") or "").strip().lower(),
+                "url": c.get(f"{prefix}_url", ""),
+                "base_url": c.get(f"{prefix}_url", ""),   # ComfyUI 用这个名字
+                "api_key": c.get(f"{prefix}_key", ""),
+                "model": c.get(f"{prefix}_model", ""),
+                # 类型专属
+                "image_size": c.get("ig_api_image_size", "1K"),
+                "workflow_file": c.get("ig_comfy_workflow", "comfyui_workflow.json"),
+                "steps": c.get("ig_nai_steps", 24),
+            }))
+        return out

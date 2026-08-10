@@ -69,7 +69,7 @@ git clone https://github.com/RGBadmin/AstrLover.git
 配置分两处，各管各的：
 
 - **AstrBot 插件配置页**只有 5 项「接线」——恋人 user id、控制台 Bot Token 与管理员 ID、TTS 的 Provider ID、生命层总开关。装机时填一次，之后不用再碰。
-- **其余全部在插件自己的 UI 里**（WebUI → 插件 → AstrLover → 打开页面 →「设置」）：视觉解析、相册、图片记忆、动态、头像签名、主动消息、生图、轻量模型、向量模型、语音，共 71 项，分组排列，改完即时生效不用重载。视觉和向量那两组旁边直接有「测一下」按钮——调完当场验证。
+- **其余全部在插件自己的 UI 里**（WebUI → 插件 → AstrLover → 打开页面 →「设置」）：视觉解析、相册、图片记忆、动态、头像签名、主动消息、生图、轻量模型、向量模型、语音，共 72 项，分组排列，改完即时生效不用重载。视觉和向量那两组旁边直接有「测一下」按钮——调完当场验证。
 
 ---
 
@@ -432,15 +432,32 @@ barefoot, lamp, warm lighting, night, depth of field, best quality, absurdres
 
 中文摄影稿仍然保留，给 NanoBanana 那类吃自然语言的后端用。
 
-### 后端
+### 后端：一主一备
 
-三个按序降级：**NanoBanana**（Gemini 系，支持参考图，人物一致性最好）→ **云 ComfyUI**（导出 API 格式的 workflow JSON 放进插件数据目录，用 `{POSITIVE}` `{NEGATIVE}` `{SEED}` `{WIDTH}` `{HEIGHT}` 占位；人物一致性建议在 workflow 里用 LoRA/IPAdapter）→ **NovelAI**（`832×1216` 三规格原生支持，步数在面板里调，默认 24——28 以上收益很小）。
+不再是一串优先顺序 + 每个后端各一套配置。两个槽，各选一个供应商类型；**主用挂了才走备用**，没有第三层。
 
-**NanoBanana 的两种协议**：`sk-` 开头的 key 基本都是中转站，走 OpenAI 兼容的 `/v1/chat/completions`（`Authorization: Bearer`）；Google 官方和部分中转支持 Gemini 原生的 `/v1beta/models/{模型}:generateContent`（`x-goog-api-key`）。面板里「接口格式」默认 `auto`——先试前者，失败再试后者，两条都挂时报错会分别说清各自是什么错。地址填到域名或 `/v1` 都认，整条带路径粘过来也认。
+```
+主用供应商    api / comfyui / novelai
+主用地址      完整端点，写什么就发什么
+主用 API Key
+主用模型
 
-**画幅走 `generationConfig.imageConfig.aspectRatio`**，不是像素。竖版 `3:4`、横版 `4:3`、方版 `1:1`，由代码按她选的画幅自动映射。把尺寸写进提示词文字是**没用的**——网关会静默忽略，不报错、图照出、尺寸不对，最难查的那种。出图尺寸 `1K`/`2K`/`4K` 在面板里选，直接影响计费和耗时（4K 响应体能到 6.5 MB）。
+备用供应商    同上。地址或 Key 留空即不启用
+```
 
-**外观锚点**：挑几张最能代表她长相的照片放进 `data/plugin_data/astrlover/persona/anchors/`，NanoBanana 以此保证生成的是同一个人。生成图落到相册目录的 `aiimages/` 子目录，下次 `/gallery scan` + `index` 后就成为她相册的一部分，能被检索、能被重发。
+**`api` 类型的协议由地址决定，不猜**：
+
+| 地址长这样 | 走的协议 | 鉴权头 | 图在哪 |
+|---|---|---|---|
+| `…/v1/chat/completions` | openai 兼容 | `Authorization: Bearer` | `choices[0].message.images[0].image_url.url` |
+| `…/v1beta/models/{模型}:generateContent` | gemini 原生 | `x-goog-api-key` | `candidates[].content.parts[].inlineData.data` |
+| `…/v1/images/generations` | grok / DALL·E 风格 | `Authorization: Bearer` | `data[0].b64_json` |
+
+认不出的地址直接报错，把三种写法列给你——中转站各开各的，同一域名下三种端点可能都在、也可能只开一个，补错了就是个看不懂的 404，填全反而最省事。
+
+**画幅走 `generationConfig.imageConfig.aspectRatio`**（竖 `3:4` / 横 `4:3` / 方 `1:1`），由代码按她选的画幅自动映射。把尺寸写进提示词文字是没用的——网关会静默忽略，不报错、图照出、尺寸不对，最难查的那种。
+
+类型专属的旋钮是全局一份，不跟着槽复制：**API 出图尺寸**（`1K`/`2K`/`4K`，直接影响计费，4K 响应体能到 6.5 MB）、**ComfyUI workflow 文件**（用 `{POSITIVE}` `{NEGATIVE}` `{SEED}` `{WIDTH}` `{HEIGHT}` 占位）、**NovelAI 步数**（默认 24，28 以上收益很小）。NovelAI 地址留空则用官方。
 
 ---
 
@@ -717,7 +734,7 @@ AstrBot WebUI → 插件 → AstrLover → Pages，三个标签：
 
 - **总览**：此刻在做什么、心情、今日日程、模块健康（每项都写明为什么是 ❌、该去哪配）、一键导出记忆包；
 - **记录**：按类型（事实 / 日记 / 事件 / 日程 / 纪念日 / 排期 / 情绪 / 状态）浏览，**每条一张卡片，正文直接改，旁边就是保存和删除**；底部一行可以新增；
-- **设置**：71 项，分组排列、改完即时生效、视觉与向量旁边有「测一下」。
+- **设置**：72 项，分组排列、改完即时生效、视觉与向量旁边有「测一下」。
 
 对话历史不在这里看——那是 AstrBot 自己的对话管理（WebUI →「聊天记录」），插件不重复造一个。
 

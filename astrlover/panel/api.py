@@ -119,7 +119,7 @@ class PanelApi:
         out.append({
             "name": "生图", "ok": bool(backends),
             "why": " → ".join(backends) if backends
-                   else "三个后端都没配（「生图」组：nanobanana / comfyui / novelai）",
+                   else "主用和备用都没配（「生图」组：供应商 + 地址 + Key）",
         })
 
         tts = bool(app.voice and app.voice.tts_ready)

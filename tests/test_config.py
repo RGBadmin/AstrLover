@@ -7,7 +7,7 @@ def test_defaults_on_empty():
     assert cfg.timezone == "Asia/Shanghai"
     assert cfg.heartbeat_minutes == 5
     assert cfg.partner_id == ""
-    assert cfg.imagegen_order == []
+    assert [t for _s, c in cfg.imagegen_slots() for t in [c['type']] if c['api_key']] == []
 
 
 def test_partner_fallback_console_admins():
@@ -20,13 +20,13 @@ def test_flat_reads():
     cfg = Cfg({
         "life_timezone": " Asia/Tokyo ",
         "life_heartbeat_minutes": 10,
-        "ig_backend_order": ["nanobanana", ""],
-        "ig_nb_api_key": "k",
+        "ig_main_type": "api", "ig_main_key": "k",
+        "ig_main_url": "https://x.com/v1/chat/completions",
     })
     assert cfg.timezone == "Asia/Tokyo"
     assert cfg.heartbeat_minutes == 10
-    assert cfg.imagegen_order == ["nanobanana"]
-    assert cfg.imagegen_backend("nanobanana")["api_key"] == "k"
+    slots = dict(cfg.imagegen_slots())
+    assert slots["主"]["type"] == "api" and slots["主"]["api_key"] == "k"
 
 
 def test_heartbeat_floor():
