@@ -4,9 +4,11 @@ v4 系模型自动附加 v4_prompt 结构；一致性弱于前两个后端，
 建议在 backend_order 中作为兜底。
 """
 
+import base64
 import io
 import random
 import zipfile
+from pathlib import Path
 
 import aiohttp
 
@@ -30,6 +32,20 @@ class NovelAIBackend(ImageBackend):
 
     def configured(self) -> bool:
         return bool(self.conf.get("api_key"))
+
+    def _strength(self) -> float:
+        try:
+            return max(0.05, min(0.99, float(self.conf.get("img2img_strength", 0.6) or 0.6)))
+        except (TypeError, ValueError):
+            return 0.6
+
+    def _reference(self, spec: PromptSpec) -> str:
+        """参考形象 → base64（不带 data: 前缀）。取第一张就够，NAI 只收一张。"""
+        for ref in spec.reference_images:
+            p = Path(ref)
+            if p.exists():
+                return base64.b64encode(p.read_bytes()).decode()
+        return ""
 
     def _steps(self) -> int:
         """步数越多越细也越慢越贵；NovelAI 超过 28 收益已经很小。"""
@@ -66,10 +82,19 @@ class NovelAIBackend(ImageBackend):
             params["v4_negative_prompt"] = {
                 "caption": {"base_caption": negative, "char_captions": []},
             }
+        action = "generate"
+        if ref := self._reference(spec):
+            # 有参考形象就走图生图，这是"每次都是同一个人"的主要手段。
+            # strength 越大越放飞、越不像参考图
+            action = "img2img"
+            params["image"] = ref
+            params["strength"] = self._strength()
+            params["noise"] = 0.0
+            params["extra_noise_seed"] = seed
         payload = {
             "input": positive,
             "model": model,
-            "action": "generate",
+            "action": action,
             "parameters": params,
         }
         headers = {"Authorization": f"Bearer {self.conf.get('api_key')}"}

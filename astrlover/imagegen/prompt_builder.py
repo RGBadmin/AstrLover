@@ -110,7 +110,7 @@ def fallback_spec(appearance: str, situation: str, anchors: list[str]) -> Prompt
         positive=positive,
         negative=_NEGATIVE + (", " + _NEGATIVE_PERSON if appearance else ""),
         width=w, height=h,
-        reference_images=anchors[:2] if appearance else [],
+        reference_images=list(anchors) if appearance else [],
         situation=situation,
         orientation=DEFAULT_ORIENTATION,
         with_her=bool(appearance),
@@ -167,7 +167,8 @@ async def build_spec(app, situation: str, anchors: list[str]) -> PromptSpec:
         positive=positive,
         negative=_NEGATIVE + (", " + _NEGATIVE_PERSON if with_her else ""),
         width=w, height=h,
-        reference_images=anchors[:2] if with_her else [],
+        # 带不带在这儿定（她入镜才带），带几张由 ImageGen.references 定
+        reference_images=list(anchors) if with_her else [],
         situation=situation,
         orientation=orientation,
         with_her=with_her,

@@ -81,5 +81,6 @@ class Cfg:
                 "image_size": c.get("ig_api_image_size", "1K"),
                 "workflow_file": c.get("ig_comfy_workflow", "comfyui_workflow.json"),
                 "steps": c.get("ig_nai_steps", 24),
+                "img2img_strength": c.get("ig_nai_img2img_strength", 0.6),
             }))
         return out

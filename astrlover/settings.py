@@ -103,6 +103,8 @@ SPEC: tuple[S, ...] = (
     S(key='ig_backup_url', group='生图', label='备用地址', type='string', default='', hint=''),
     S(key='ig_backup_key', group='生图', label='备用 API Key', type='string', default='', hint=''),
     S(key='ig_backup_model', group='生图', label='备用模型', type='string', default='', hint=''),
+    S(key='ig_reference', group='生图', label='参考形象路径', type='string', default='', hint='她长什么样。填一张图或一个目录（目录取前 3 张）。她入镜时带上它走图生图，这是保证每次都是同一个人的主要手段；拍风景不带。留空则用数据目录下的 anchors/。'),
+    S(key='ig_nai_img2img_strength', group='生图', label='NovelAI 图生图强度', type='string', default='0.6', hint='0~1，越大越放飞、越不像参考图。0.5~0.7 一般是保脸和跟提示词的平衡点。'),
     S(key='ig_api_image_size', group='生图', label='API 出图尺寸', type='string', default='1K', hint='仅 api 类型的 Gemini 系有效。1K≈0.5MB / 2K≈2.3MB / 4K≈6.5MB，直接影响计费和耗时。', options=['1K', '2K', '4K']),
     S(key='ig_comfy_workflow', group='生图', label='ComfyUI workflow 文件', type='string', default='comfyui_workflow.json', hint='API 格式 JSON，放数据目录；用 {POSITIVE}/{NEGATIVE}/{SEED}/{WIDTH}/{HEIGHT} 占位。'),
     S(key='ig_nai_steps', group='生图', label='NovelAI 生成步数', type='int', default=24, hint='越多越细也越慢越贵，28 以上收益很小。范围 1~50。'),

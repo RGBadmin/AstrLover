@@ -115,9 +115,11 @@ def test_empty_cells_are_dropped(gen_app):
 def test_selfie_carries_appearance_and_anchors(gen_app):
     async def go():
         app = await gen_app(_SELFIE)
-        spec = await build_spec(app, "想给他看晚霞", ["/tmp/a.png", "/tmp/b.png", "/tmp/c.png"])
+        refs = ["/tmp/a.png", "/tmp/b.png", "/tmp/c.png"]
+        spec = await build_spec(app, "想给他看晚霞", refs)
         assert spec.positive.startswith("人物：黑长直")
-        assert spec.reference_images == ["/tmp/a.png", "/tmp/b.png"], "锚点图最多两张"
+        # 带不带在这儿定，带几张由 ImageGen.references 定（见 test_reference_image）
+        assert spec.reference_images == refs
         assert "different person" in spec.negative
         assert spec.with_her
         await app.terminate()

@@ -60,23 +60,40 @@ class ImageGen:
     def available(self) -> bool:
         return bool(self.backends)
 
+    MAX_REFERENCES = 3          # 再多只是撑大请求体，对一致性没有增益
+    _IMG_SUFFIX = (".jpg", ".jpeg", ".png", ".webp")
+
+    def references(self) -> list[str]:
+        """参考形象：她本人长什么样。
+
+        面板里填一个路径，文件或目录都行；留空则用数据目录下的 `anchors/`。
+        只在她入镜时才会被用上——拍风景带着她的照片只会污染画面，
+        那一步的判断在 prompt_builder 里。
+        """
+        raw = str(self.app.conf.get("ig_reference") or "").strip()
+        root = Path(raw) if raw else (self.app.data_dir / "anchors")
+        if raw and not root.exists():
+            logger.warning(f"[AstrLover] 参考形象路径不存在，这次不带参考图：{raw}")
+            return []
+        if root.is_file():
+            return [str(root)] if root.suffix.lower() in self._IMG_SUFFIX else []
+        if not root.is_dir():
+            return []
+        return [str(p) for p in sorted(root.glob("*"))
+                if p.suffix.lower() in self._IMG_SUFFIX][:self.MAX_REFERENCES]
+
     async def generate(self, situation: str) -> str | None:
         """按情境需求生成"照片"，保存后返回文件路径。
 
-        外观锚点图放 data/plugin_data/astrlover/persona/anchors/ 下
-        （挑几张最能代表她长相的照片，支持参考图的后端以此保证同一个人）。
+        她入镜时会带上参考形象走图生图（面板「生图」组的「参考形象路径」），
+        这是保证"每次都是同一个人"的主要手段。
         产物落到 presence 相册目录（若已配置）的 aiimages/ 子目录，
         之后 /gallery scan + index 即回流成她相册的一部分。
         """
         if not self.backends:
             return None
         app = self.app
-        anchors_dir = app.data_dir / "anchors"
-        anchor_paths = [
-            str(p) for p in sorted(anchors_dir.glob("*"))
-            if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
-        ][:2] if anchors_dir.exists() else []
-        spec = await build_spec(app, situation, anchor_paths)
+        spec = await build_spec(app, situation, self.references())
 
         # 优先落到 presence 相册目录，回流后可被她自己检索到
         album_dir = str(app.conf.get("gallery_dir") or "").strip()
