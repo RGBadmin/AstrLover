@@ -436,6 +436,10 @@ barefoot, lamp, warm lighting, night, depth of field, best quality, absurdres
 
 三个按序降级：**NanoBanana**（Gemini 系，支持参考图，人物一致性最好）→ **云 ComfyUI**（导出 API 格式的 workflow JSON 放进插件数据目录，用 `{POSITIVE}` `{NEGATIVE}` `{SEED}` `{WIDTH}` `{HEIGHT}` 占位；人物一致性建议在 workflow 里用 LoRA/IPAdapter）→ **NovelAI**（`832×1216` 三规格原生支持，步数在面板里调，默认 24——28 以上收益很小）。
 
+**NanoBanana 的两种协议**：`sk-` 开头的 key 基本都是中转站，走 OpenAI 兼容的 `/v1/chat/completions`（`Authorization: Bearer`）；Google 官方和部分中转支持 Gemini 原生的 `/v1beta/models/{模型}:generateContent`（`x-goog-api-key`）。面板里「接口格式」默认 `auto`——先试前者，失败再试后者，两条都挂时报错会分别说清各自是什么错。地址填到域名或 `/v1` 都认，整条带路径粘过来也认。
+
+**画幅走 `generationConfig.imageConfig.aspectRatio`**，不是像素。竖版 `3:4`、横版 `4:3`、方版 `1:1`，由代码按她选的画幅自动映射。把尺寸写进提示词文字是**没用的**——网关会静默忽略，不报错、图照出、尺寸不对，最难查的那种。出图尺寸 `1K`/`2K`/`4K` 在面板里选，直接影响计费和耗时（4K 响应体能到 6.5 MB）。
+
 **外观锚点**：挑几张最能代表她长相的照片放进 `data/plugin_data/astrlover/persona/anchors/`，NanoBanana 以此保证生成的是同一个人。生成图落到相册目录的 `aiimages/` 子目录，下次 `/gallery scan` + `index` 后就成为她相册的一部分，能被检索、能被重发。
 
 ---

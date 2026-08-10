@@ -71,7 +71,8 @@ class Cfg:
         c = self._c
         if name == "nanobanana":
             return {"api_key": c.get("ig_nb_api_key", ""), "base_url": c.get("ig_nb_base_url", ""),
-                    "model": c.get("ig_nb_model", "")}
+                    "model": c.get("ig_nb_model", ""), "format": c.get("ig_nb_format", "auto"),
+                    "image_size": c.get("ig_nb_image_size", "1K")}
         if name == "comfyui":
             return {"base_url": c.get("ig_comfy_base_url", ""), "api_key": c.get("ig_comfy_api_key", ""),
                     "workflow_file": c.get("ig_comfy_workflow", "comfyui_workflow.json")}

@@ -96,9 +96,11 @@ SPEC: tuple[S, ...] = (
     # ---- 生图 ----
     S(key='ig_prompt', group='生图', label='生图提示词模板', type='text', default=IMAGE_PROMPT, hint='先判断拍什么/画幅/她入不入镜，再按摄影语言写总视图+九宫格。输出格式由代码追加。'),
     S(key='ig_backend_order', group='生图', label='后端优先顺序', type='list', default=['nanobanana', 'comfyui', 'novelai'], hint='按序降级：前一个失败自动试下一个。'),
-    S(key='ig_nb_api_key', group='生图', label='NanoBanana API Key', type='string', default='', hint='支持参考图，人物一致性最好，建议首选。'),
+    S(key='ig_nb_api_key', group='生图', label='NanoBanana API Key', type='string', default='', hint='支持参考图，人物一致性最好，建议首选。中转站的 key 一般 sk- 开头。'),
     S(key='ig_nb_base_url', group='生图', label='NanoBanana 地址', type='string', default='https://generativelanguage.googleapis.com'),
     S(key='ig_nb_model', group='生图', label='NanoBanana 模型', type='string', default='gemini-2.5-flash-image'),
+    S(key='ig_nb_format', group='生图', label='NanoBanana 接口格式', type='string', default='auto', hint='auto 先试 OpenAI 兼容的 /v1/chat/completions，失败再试 Gemini 原生。sk- 开头的 key 基本都是中转站，走 openai。', options=['auto', 'openai', 'gemini']),
+    S(key='ig_nb_image_size', group='生图', label='NanoBanana 出图尺寸', type='string', default='1K', hint='1K≈0.5MB / 2K≈2.3MB / 4K≈6.5MB，直接影响计费和耗时。', options=['1K', '2K', '4K']),
     S(key='ig_comfy_base_url', group='生图', label='ComfyUI 地址', type='string', default=''),
     S(key='ig_comfy_api_key', group='生图', label='ComfyUI 鉴权 Key', type='string', default='', hint='没有就留空。'),
     S(key='ig_comfy_workflow', group='生图', label='ComfyUI workflow 文件', type='string', default='comfyui_workflow.json', hint='API 格式 JSON，放数据目录；用 {POSITIVE}/{NEGATIVE}/{SEED} 占位。'),
