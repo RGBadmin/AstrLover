@@ -354,3 +354,29 @@ def test_camera_talk_is_detected():
         "能看见地面和她的头顶，脚在画面下方；只有她的腿是清楚的，"
         "周围的办公桌化成一片模糊的米色；影子朝右前方拉得很长。")
     assert not _camera_talk("一片没有波纹的海占了画面下半，天空占上半")
+
+
+def test_style_tail_only_when_she_is_in_frame(gen_app):
+    """风格锚是拉画风用的，只在她入镜时加——拍风景配上"网红美腿"就毁了。"""
+
+    async def go():
+        app = await gen_app(_SELFIE)
+        await app.conf.save(app.dao, {"ig_style": "东方温婉，黑长直，美腿"})
+        spec = await build_spec(app, "阳台", [])
+        assert spec.positive.endswith("东方温婉，黑长直，美腿")
+        await app.terminate()
+
+        app2 = await gen_app(_SCENE)
+        await app2.conf.save(app2.dao, {"ig_style": "东方温婉，黑长直，美腿"})
+        spec2 = await build_spec(app2, "赤道无风带", [])
+        assert "美腿" not in spec2.positive, "拍风景不该带风格锚"
+        await app2.terminate()
+
+    run(go())
+
+
+def test_style_tail_is_not_camera_talk():
+    from astrlover.imagegen.prompt_builder import _camera_talk
+    from astrlover.imagegen.prompts import STYLE_TAIL
+
+    assert not _camera_talk(STYLE_TAIL), "风格锚不能混进拍摄用语"

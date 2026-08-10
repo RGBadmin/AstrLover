@@ -194,6 +194,9 @@ async def build_spec(app, situation: str, anchors: list[str]) -> PromptSpec:
     # 她入镜才去取外观——不入镜时连这次生成都不该问她长什么样
     appearance = (await app.appearance_text()).strip() if with_her else ""
     positive = _compose(overview, grid, appearance, with_her)
+    # 风格锚只在她入镜时加——拍风景配上"网红美腿"就毁了
+    if with_her and (tail := str(app.conf.get("ig_style") or "").strip()):
+        positive += "\n" + tail
 
     if strays := _camera_talk(positive):
         logger.warning(f"[AstrLover] 生图提示词里混进了拍摄用语 {strays}——"
