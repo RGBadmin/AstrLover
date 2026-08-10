@@ -122,6 +122,13 @@ button.mini {
   cursor: pointer;
   font-size: 12px;
 }
+/* 删除的第二段：iframe 里没有 confirm() 可用，只能靠视觉把"这一下是真删"说清楚 */
+button.mini.danger {
+  border-color: #e05555;
+  color: #e05555;
+  font-weight: 600;
+}
+button:disabled { opacity: .5; cursor: default; }
 .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 select, input[type="text"], input[type="datetime-local"] {
   background: var(--card);

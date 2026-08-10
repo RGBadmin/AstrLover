@@ -131,12 +131,28 @@ async function renderRecords() {
       }, "保存"));
     }
     if (row.deletable) {
-      ops.push(el("button", {
-        class: "mini",
-        onclick: () => {
-          if (confirm(`删除 ${row.rid}？`)) mutate({ op: "del", rid: row.rid });
-        },
-      }, "删除"));
+      // 两段式确认，不用 confirm()：插件页的 iframe 是
+      // sandbox="allow-scripts allow-forms allow-downloads"，没有 allow-modals，
+      // confirm/alert/prompt 会被浏览器静默禁掉——confirm 直接返回 false，
+      // 于是点删除永远没反应。
+      const del = el("button", { class: "mini" }, "删除");
+      let armed = null;
+      del.addEventListener("click", () => {
+        if (armed) {
+          clearTimeout(armed);
+          armed = null;
+          mutate({ op: "del", rid: row.rid });
+          return;
+        }
+        del.textContent = "再点一次确认";
+        del.className = "mini danger";
+        armed = setTimeout(() => {
+          armed = null;
+          del.textContent = "删除";
+          del.className = "mini";
+        }, 4000);
+      });
+      ops.push(del);
     }
     return el("div", { class: "card", style: "margin-bottom:8px" }, [
       el("div", { class: "meta", style: "margin-bottom:4px" },
@@ -257,6 +273,37 @@ async function renderSettings() {
     renderSettings();
   };
 
+  // 结果显示在页面上，不用 alert()：iframe 的 sandbox 是
+  // allow-scripts allow-forms allow-downloads，没有 allow-modals，
+  // alert/confirm/prompt 全被浏览器静默禁掉——请求发了但你什么都看不到。
+  const PROBES = {
+    "轻量模型": { what: "light", label: "测一下轻量模型" },
+    "视觉解析": { what: "vision", label: "测一下视觉 API" },
+    "向量模型": { what: "embed", label: "测一下向量区分度" },
+  };
+
+  const probeBar = (what, label) => {
+    const out = el("pre", {
+      class: "meta",
+      style: "white-space:pre-wrap;margin:6px 0 0;line-height:1.6;display:none",
+    });
+    const btn = el("button", { class: "ghost" }, label);
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      out.style.display = "block";
+      out.textContent = "正在测…";
+      try {
+        const r = await bridge.apiPost("probe", { what });
+        out.textContent = r.message || "（没有返回内容）";
+      } catch (e) {
+        out.textContent = "出错：" + ((e && e.message) || e);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+    return el("div", { style: "margin:8px 0" }, [el("div", { class: "toolbar" }, btn), out]);
+  };
+
   const blocks = [];
   for (const group of d.groups || []) {
     const rows = items.filter((it) => it.group === group);
@@ -279,42 +326,8 @@ async function renderSettings() {
         it.hint ? el("div", { class: "meta" }, it.hint) : "",
       ]));
     }
-    if (group === "轻量模型") {
-      blocks.push(el("div", { class: "toolbar" }, [
-        el("button", {
-          class: "ghost",
-          onclick: async () => {
-            toast("正在测…");
-            const r = await call(() => bridge.apiPost("probe", { what: "light" }));
-            alert(r.message);
-          },
-        }, "测一下轻量模型"),
-      ]));
-    }
-    if (group === "视觉解析") {
-      blocks.push(el("div", { class: "toolbar" }, [
-        el("button", {
-          class: "ghost",
-          onclick: async () => {
-            toast("正在测…");
-            const r = await call(() => bridge.apiPost("probe", { what: "vision" }));
-            alert(r.message);
-          },
-        }, "测一下视觉 API"),
-      ]));
-    }
-    if (group === "相册") {
-      blocks.push(el("div", { class: "toolbar" }, [
-        el("button", {
-          class: "ghost",
-          onclick: async () => {
-            toast("正在测…");
-            const r = await call(() => bridge.apiPost("probe", { what: "embed" }));
-            alert(r.message);
-          },
-        }, "测一下向量区分度"),
-      ]));
-    }
+    const probe = PROBES[group];
+    if (probe) blocks.push(probeBar(probe.what, probe.label));
   }
 
   view.replaceChildren(

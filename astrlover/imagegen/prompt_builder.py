@@ -101,7 +101,19 @@ _CELL_WORDS = {
 }
 # 只用正面表述。写「不要拼贴」等于把"拼贴"送进模型的注意力——
 # 语言模型驱动的生图没有负向通道，提到就是提到。
-_SINGLE_FRAME = "一次快门拍下的单张照片，整幅是同一个连续空间，一个主体贯穿全画面。"
+_SINGLE_FRAME = "一张照片，整幅是同一个连续空间，一个主体贯穿全画面。"
+
+# 提示词只该写"图上有什么"，不该写"打算怎么拍"——模型看不懂意图，只能瞎猜。
+# 这些词一出现就说明规划模型漂回拍摄口吻了，记一条警告让人看得见。
+_CAMERA_WORDS = (
+    "视角", "机位", "俯拍", "仰拍", "平视", "俯看", "第一人称", "POV",
+    "构图", "取景", "镜头", "焦段", "广角", "长焦", "光圈", "景深",
+    "快门", "曝光", "呈现", "展现", "突出", "营造", "旨在", "力求",
+)
+
+
+def _camera_talk(text: str) -> list[str]:
+    return [w for w in _CAMERA_WORDS if w in text]
 
 
 def _compose(overview: str, grid: dict, appearance: str, with_her: bool) -> str:
@@ -109,7 +121,7 @@ def _compose(overview: str, grid: dict, appearance: str, with_her: bool) -> str:
     if with_her and appearance:
         lines.append(f"人物：{appearance}")
     if overview:
-        lines.append(f"拍摄：{overview}")
+        lines.append(f"整体：{overview}")
     # 压成一行分号串：一旦分行成列表状，模型就当成分格布局了
     cells = [f"{_CELL_WORDS[k]}{grid.get(k, '').strip()}"
              for k in _GRID_ORDER if str(grid.get(k, "")).strip()]
@@ -182,6 +194,10 @@ async def build_spec(app, situation: str, anchors: list[str]) -> PromptSpec:
     # 她入镜才去取外观——不入镜时连这次生成都不该问她长什么样
     appearance = (await app.appearance_text()).strip() if with_her else ""
     positive = _compose(overview, grid, appearance, with_her)
+
+    if strays := _camera_talk(positive):
+        logger.warning(f"[AstrLover] 生图提示词里混进了拍摄用语 {strays}——"
+                       "该写图上有什么，不是打算怎么拍。改「生图提示词模板」那一项。")
 
     tags = _clean_tags(str(plan.get("tags") or ""), with_her)
     w, h = SIZES[orientation]

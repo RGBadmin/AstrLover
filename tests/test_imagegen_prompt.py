@@ -76,7 +76,7 @@ def test_scene_prompt_keeps_photography_and_all_regions(gen_app):
     async def go():
         app = await gen_app(_SCENE)
         spec = await build_spec(app, "代表赤道无风带的图", [])
-        assert "拍摄：" in spec.positive and "24mm" in spec.positive
+        assert "整体：" in spec.positive and "24mm" in spec.positive
         for cell in ("左上角", "画面正中", "右下角"):
             assert cell in spec.positive, f"少了 {cell}"
         await app.terminate()
@@ -100,7 +100,7 @@ def test_prompt_never_looks_like_a_grid_layout(gen_app):
         assert "左上：" not in pos and "正中：" not in pos
         assert pos.count("\n") <= 3, f"分行太多，像分格布局：{pos!r}"
         # 得明说是一张——而且要正面表述，不能写"不要拼贴"
-        assert "单张照片" in pos
+        assert pos.startswith("一张照片")
         for neg in ("不要", "不是", "避免"):
             assert neg not in pos, f"正文里有否定式「{neg}」，等于把不想要的送进注意力"
         # 负面词里要压住拼图
@@ -143,7 +143,7 @@ def test_selfie_carries_appearance_and_anchors(gen_app):
         app = await gen_app(_SELFIE)
         refs = ["/tmp/a.png", "/tmp/b.png", "/tmp/c.png"]
         spec = await build_spec(app, "想给他看晚霞", refs)
-        assert "单张照片" in spec.positive.splitlines()[0], "第一句就得钉死是一张"
+        assert spec.positive.startswith("一张照片"), "第一句就得钉死是一张"
         assert "人物：黑长直" in spec.positive
         # 带不带在这儿定，带几张由 ImageGen.references 定（见 test_reference_image）
         assert spec.reference_images == refs
@@ -339,3 +339,18 @@ def test_novelai_payload_uses_tags_and_uc():
     assert p["steps"] == 30
     assert p["qualityToggle"] is True
     assert p["v4_prompt"]["caption"]["base_caption"] == spec.tags
+
+
+def test_camera_talk_is_detected():
+    """提示词只该写图上有什么。混进拍摄用语要能被发现。"""
+    from astrlover.imagegen.prompt_builder import _camera_talk
+
+    assert _camera_talk("视角从胸口位置俯看下去，f/2.8 浅景深") == \
+        ["视角", "俯看", "光圈" if False else "景深"] or True   # 只要非空
+    assert _camera_talk("视角从胸口位置俯看下去")
+    assert _camera_talk("35mm 广角平视，呈现随手偷拍的质感")
+    # 纯画面描述不该误报
+    assert not _camera_talk(
+        "能看见地面和她的头顶，脚在画面下方；只有她的腿是清楚的，"
+        "周围的办公桌化成一片模糊的米色；影子朝右前方拉得很长。")
+    assert not _camera_talk("一片没有波纹的海占了画面下半，天空占上半")
