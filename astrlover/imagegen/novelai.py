@@ -23,6 +23,7 @@ _UC = (
     "lowres, worst quality, bad quality, jpeg artifacts, watermark, signature, "
     "text, logo, bad anatomy, bad hands, extra digits, fewer digits, "
     "missing fingers, artistic error, scan artifacts, sketch, lineart, "
+    "collage, grid, split screen, multiple views, panels, borders, "
     "monochrome, greyscale, unfinished"
 )
 

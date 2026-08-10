@@ -72,28 +72,52 @@ def test_scene_has_no_person(gen_app):
     run(go())
 
 
-def test_scene_prompt_keeps_photography_and_grid(gen_app):
+def test_scene_prompt_keeps_photography_and_all_regions(gen_app):
     async def go():
         app = await gen_app(_SCENE)
         spec = await build_spec(app, "代表赤道无风带的图", [])
-        assert "总视图：" in spec.positive and "24mm" in spec.positive
-        assert "九宫格：" in spec.positive
-        for cell in ("左上", "正中", "右下"):
-            assert cell in spec.positive, f"少了 {cell} 格"
+        assert "拍摄：" in spec.positive and "24mm" in spec.positive
+        for cell in ("左上角", "画面正中", "右下角"):
+            assert cell in spec.positive, f"少了 {cell}"
         await app.terminate()
 
     run(go())
 
 
-def test_grid_cells_keep_reading_order(gen_app):
-    """九宫格要按左上→右下的顺序，不能随字典顺序乱。"""
+def test_prompt_never_looks_like_a_grid_layout(gen_app):
+    """九宫格是规划阶段的思考工具，不能原样发给生图模型。
+
+    发过一次逐格分行的「九宫格：左上：… 上中：…」，模型照字面理解，
+    真给画了一张九张照片拼起来的图。
+    """
 
     async def go():
         app = await gen_app(_SCENE)
         spec = await build_spec(app, "海", [])
         pos = spec.positive
-        order = [pos.index(c) for c in ("左上", "上中", "右上", "左中", "正中",
-                                        "右中", "左下", "下中", "右下")]
+        assert "九宫格" not in pos, "这个词一出现就会被画成拼图"
+        # 也不能长得像逐格列表：格子要压在同一行
+        assert "左上：" not in pos and "正中：" not in pos
+        assert pos.count("\n") <= 3, f"分行太多，像分格布局：{pos!r}"
+        # 得明说是一张
+        assert "单幅照片" in pos
+        # 负面词里要压住拼图
+        for bad in ("collage", "grid", "split screen", "multiple views"):
+            assert bad in spec.negative
+        await app.terminate()
+
+    run(go())
+
+
+def test_regions_keep_reading_order(gen_app):
+    """九个区域按左上→右下叙述，不能随字典顺序乱。"""
+
+    async def go():
+        app = await gen_app(_SCENE)
+        spec = await build_spec(app, "海", [])
+        pos = spec.positive
+        order = [pos.index(c) for c in ("左上角", "上方中间", "右上角", "画面左侧",
+                                        "画面正中", "画面右侧", "左下角", "下方中间", "右下角")]
         assert order == sorted(order)
         await app.terminate()
 
@@ -104,8 +128,8 @@ def test_empty_cells_are_dropped(gen_app):
     async def go():
         app = await gen_app(_SELFIE)
         spec = await build_spec(app, "阳台上的晚霞", [])
-        assert "左上：" not in spec.positive, "没内容的格子不该占行"
-        assert "正中：她的侧脸" in spec.positive
+        assert "左上角" not in spec.positive, "没内容的格子不该出现"
+        assert "画面正中她的侧脸" in spec.positive
         await app.terminate()
 
     run(go())
@@ -117,7 +141,8 @@ def test_selfie_carries_appearance_and_anchors(gen_app):
         app = await gen_app(_SELFIE)
         refs = ["/tmp/a.png", "/tmp/b.png", "/tmp/c.png"]
         spec = await build_spec(app, "想给他看晚霞", refs)
-        assert spec.positive.startswith("人物：黑长直")
+        assert spec.positive.startswith("单幅照片"), "第一句就得钉死是一张"
+        assert "人物：黑长直" in spec.positive
         # 带不带在这儿定，带几张由 ImageGen.references 定（见 test_reference_image）
         assert spec.reference_images == refs
         assert "different person" in spec.negative

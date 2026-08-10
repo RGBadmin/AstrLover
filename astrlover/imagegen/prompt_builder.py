@@ -24,6 +24,10 @@ SIZES = {
 DEFAULT_ORIENTATION = "portrait"
 
 _NEGATIVE = (
+    # collage 这一串是必须的：描述里带方位词时，模型很容易理解成
+    # "把这几块拼成一张"，出来就是九宫格拼图
+    "collage, photo collage, grid, photo grid, split screen, multiple panels, "
+    "multiple views, contact sheet, montage, borders, "
     "lowres, bad anatomy, bad hands, extra fingers, deformed face, blurry, "
     "watermark, text, logo, jpeg artifacts"
 )
@@ -43,6 +47,8 @@ _JSON_CONTRACT = (
 
 # NovelAI 没有质量标签时会往草图/线稿漂——两张废图都是这个样子
 _NAI_QUALITY = "best quality, amazing quality, very aesthetic, absurdres"
+# NAI 同理：标签里出现多个场景词时容易排成分格
+_NAI_SINGLE = "solo focus, single image"
 
 _GRID_ORDER = ("左上", "上中", "右上", "左中", "正中", "右中", "左下", "下中", "右下")
 
@@ -75,21 +81,34 @@ def _clean_tags(raw: str, with_her: bool) -> str:
     for t in reversed(subject.split(", ")):
         if t not in seen:
             seen.insert(0, t)
-    for q in _NAI_QUALITY.split(", "):
+    for q in (_NAI_SINGLE.split(", ") + _NAI_QUALITY.split(", ")):
         if q not in seen:
             seen.append(q)
     return ", ".join(seen)
 
 
+# 九个格子在正文里的说法。绝对不能写成「九宫格」加分行列表——
+# 生图模型会照字面理解，真给你画一张九张照片拼起来的图。
+# 九宫格是规划阶段的思考工具，不是发出去的格式。
+_CELL_WORDS = {
+    "左上": "左上角", "上中": "上方中间", "右上": "右上角",
+    "左中": "画面左侧", "正中": "画面正中", "右中": "画面右侧",
+    "左下": "左下角", "下中": "下方中间", "右下": "右下角",
+}
+_SINGLE_FRAME = "单幅照片，一个完整连贯的画面。"
+
+
 def _compose(overview: str, grid: dict, appearance: str, with_her: bool) -> str:
-    lines = []
+    lines = [_SINGLE_FRAME]
     if with_her and appearance:
         lines.append(f"人物：{appearance}")
     if overview:
-        lines.append(f"总视图：{overview}")
-    cells = [f"{k}：{grid.get(k, '').strip()}" for k in _GRID_ORDER if str(grid.get(k, "")).strip()]
+        lines.append(f"拍摄：{overview}")
+    # 压成一行分号串：一旦分行成列表状，模型就当成分格布局了
+    cells = [f"{_CELL_WORDS[k]}{grid.get(k, '').strip()}"
+             for k in _GRID_ORDER if str(grid.get(k, "")).strip()]
     if cells:
-        lines.append("九宫格：\n" + "\n".join(cells))
+        lines.append("画面：" + "；".join(cells) + "。")
     return "\n".join(lines)
 
 
